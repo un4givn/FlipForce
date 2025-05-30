@@ -173,7 +173,8 @@ def store_metadata_and_sales_snapshot(conn, pack_detail_data):
         ):  # Fallback if structure is different for some reason
             pack_category_name = pack_detail_data.get("tier", "Unknown")
 
-        # Cost from API (for storage in pack_series_metadata, may differ from static cost for ROI)
+        # Cost from API (for storage in pack_series_metadata,
+        # may differ from static cost for ROI)
         cost_from_api = pack_detail_data.get("costCents")
         if cost_from_api is None and pack_detail_data.get(
             "slabPackCategory"
@@ -195,8 +196,8 @@ def store_metadata_and_sales_snapshot(conn, pack_detail_data):
             VALUES (%s, %s, %s, %s, %s, NOW())
             ON CONFLICT (series_id) DO UPDATE SET
                 name = EXCLUDED.name,
-                tier = EXCLUDED.tier, 
-                cost_cents = EXCLUDED.cost_cents, 
+                tier = EXCLUDED.tier,
+                cost_cents = EXCLUDED.cost_cents,
                 status = EXCLUDED.status,
                 last_seen = NOW();
             """,
@@ -285,7 +286,9 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
                 else:
                     # This log helps diagnose schema/data integrity issues
                     print(
-                        f"[ERROR] compute_and_store_sold_cards: 'card_id' not found in snapshot row for series {series_id}. Columns: {column_names}"
+                        f"[ERROR] compute_and_store_sold_cards: 'card_id' not found "
+                        f"in snapshot row for series {series_id}. "
+                        f"Columns: {column_names}"
                     )
 
         sold_card_ids = prev_card_ids - current_card_ids
@@ -318,22 +321,31 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
                     )
                 )
             if enriched_sales:
-                cur.executemany(
-                    """
-                    INSERT INTO sold_card_events (series_id, card_id, tier, player_name, overall, insert_name, set_number, set_name, holo, rarity, parallel_number, parallel_total, parallel_name, front_image, back_image, slab_kind, grading_company, estimated_value_cents, sold_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, NOW());
-                    """,
-                    enriched_sales,
-                )
+                insert_query = """
+                    INSERT INTO sold_card_events (
+                        series_id, card_id, tier, player_name, overall,
+                        insert_name, set_number, set_name, holo, rarity,
+                        parallel_number, parallel_total, parallel_name,
+                        front_image, back_image, slab_kind, grading_company,
+                        estimated_value_cents, sold_at
+                    ) VALUES (
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                        NOW()
+                    );
+                """
+                cur.executemany(insert_query, enriched_sales)
 
             # Update pack_sales_tracker
-            cur.execute(
-                """
-                INSERT INTO pack_sales_tracker (series_id, total_sold, last_checked) VALUES (%s, %s, NOW())
-                ON CONFLICT (series_id) DO UPDATE SET total_sold = pack_sales_tracker.total_sold + EXCLUDED.total_sold, last_checked = NOW();
-                """,
-                (series_id, newly_sold_count),
-            )
+            update_query = """
+                INSERT INTO pack_sales_tracker
+                    (series_id, total_sold, last_checked)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (series_id)
+                DO UPDATE SET
+                    total_sold = pack_sales_tracker.total_sold + EXCLUDED.total_sold,
+                    last_checked = NOW();
+            """
+            cur.execute(update_query, (series_id, newly_sold_count))
 
         # Update current snapshot of cards in pack
         cur.execute(
@@ -344,7 +356,9 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
             for card_api_data in current_cards_with_tier_info:
                 if "id" not in card_api_data:
                     print(
-                        f"[ERROR] compute_and_store_sold_cards: Card data missing 'id' for series {series_id}: {card_api_data.get('playerName')}"
+                        f"[ERROR] compute_and_store_sold_cards: Card data "
+                        f"missing 'id' for series {series_id}: "
+                        f"{card_api_data.get('playerName')}"
                     )
                     continue
                 snapshot_insert_values.append(
@@ -372,13 +386,18 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
                     )
                 )
             if snapshot_insert_values:
-                cur.executemany(
-                    """
-                    INSERT INTO pack_card_snapshots (series_id, card_id, tier, player_name, overall, insert_name, set_number, set_name, holo, rarity, parallel_number, parallel_total, parallel_name, front_image, back_image, slab_kind, grading_company, estimated_value_cents)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
-                    """,
-                    snapshot_insert_values,
-                )
+                insert_snapshot_query = """
+                    INSERT INTO pack_card_snapshots (
+                        series_id, card_id, tier, player_name, overall,
+                        insert_name, set_number, set_name, holo, rarity,
+                        parallel_number, parallel_total, parallel_name,
+                        front_image, back_image, slab_kind, grading_company,
+                        estimated_value_cents
+                    ) VALUES (
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                    );
+                """
+                cur.executemany(insert_snapshot_query, snapshot_insert_values)
     conn.commit()
     return newly_sold_count
 
@@ -387,22 +406,29 @@ def store_pack_total_value_snapshot(conn, series_id, total_value_cents):
     """Stores a snapshot of the sum of all available cards' values in the pack."""
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO pack_total_value_snapshots (series_id, total_estimated_value_cents, snapshot_time) VALUES (%s, %s, NOW());",
-                (series_id, total_value_cents),
-            )
+            query = """
+                INSERT INTO pack_total_value_snapshots
+                    (series_id, total_estimated_value_cents, snapshot_time)
+                VALUES (%s, %s, NOW());
+            """
+            cur.execute(query, (series_id, total_value_cents))
         conn.commit()
-        # print(f"[{datetime.now()}] Recorded total available pack value for series {series_id}: {total_value_cents} cents.")
+        # print(
+        #     f"[{datetime.now()}] Recorded total available pack value for series "
+        #     f"{series_id}: {total_value_cents} cents."
+        # )
     except Exception as e:
         print(
-            f"[{datetime.now()}] ERROR storing total pack value for series {series_id}: {e}"
+            f"[{datetime.now()}] ERROR storing total pack value for series "
+            f"{series_id}: {e}"
         )
         if conn:
             try:
                 conn.rollback()
             except Exception as rb_e:
                 print(
-                    f"[{datetime.now()}] ERROR during rollback for total pack value: {rb_e}"
+                    f"[{datetime.now()}] ERROR during rollback for total pack "
+                    f"value: {rb_e}"
                 )
 
 
@@ -431,7 +457,8 @@ def calculate_and_store_ev_roi(
         except (ValueError, TypeError):
             hit_rate = 0.0
             print(
-                f"WARN: Invalid or missing hitRate for tier {tier_name} in series {series_id}. Defaulting to 0.0."
+                f"WARN: Invalid or missing hitRate for tier {tier_name} in "
+                f"series {series_id}. Defaulting to 0.0."
             )
 
         cards_in_tier = tier_info.get("cards", [])
@@ -479,12 +506,16 @@ def calculate_and_store_ev_roi(
         current_roi = (float(expected_value_total_cents) / static_pack_cost_val) - 1.0
     elif static_pack_cost_val == 0:
         print(
-            f"[{datetime.now()}] WARN: Static pack cost is 0 for category '{pack_category_from_meta}', series {series_id}. ROI is effectively infinite or undefined."
+            f"[{datetime.now()}] WARN: Static pack cost is 0 for category "
+            f"'{pack_category_from_meta}', series {series_id}. ROI is "
+            f"effectively infinite or undefined."
         )
         current_roi = float("inf")  # Or handle as per desired logic, maybe None
     else:  # static_pack_cost_val is None
         print(
-            f"[{datetime.now()}] WARN: Static pack cost not found for category '{pack_category_from_meta}', series {series_id}. ROI cannot be calculated."
+            f"[{datetime.now()}] WARN: Static pack cost not found for category "
+            f"'{pack_category_from_meta}', series {series_id}. "
+            f"ROI cannot be calculated."
         )
         static_pack_cost_val = None  # Ensure it's None if not found for DB
         current_roi = None
@@ -492,11 +523,15 @@ def calculate_and_store_ev_roi(
     # Store in DB
     try:
         with conn.cursor() as cur:
+            ev_roi_query = """
+                INSERT INTO pack_ev_roi_snapshots (
+                    series_id, expected_value_cents, static_pack_cost_cents, roi,
+                    num_premium_cards_per_pack, num_non_premium_cards_per_pack,
+                    snapshot_time
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING snapshot_id;
+            """
             cur.execute(
-                """
-                INSERT INTO pack_ev_roi_snapshots (series_id, expected_value_cents, static_pack_cost_cents, roi, num_premium_cards_per_pack, num_non_premium_cards_per_pack, snapshot_time)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING snapshot_id;
-                """,
+                ev_roi_query,
                 (
                     series_id,
                     expected_value_total_cents,
@@ -524,16 +559,22 @@ def calculate_and_store_ev_roi(
                             tc["tier_contribution_to_ev_cents"],
                         )
                     )
-
-                cur.executemany(
-                    """
-                    INSERT INTO pack_tier_ev_contribution_snapshots (series_id, ev_roi_snapshot_id, tier_api_id, tier_name, is_premium, hit_rate, num_cards_in_tier, avg_value_in_tier_cents, tier_contribution_to_ev_cents, snapshot_time)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
-                    """,
-                    contributions_to_insert,
-                )
+                tier_contribution_query = """
+                    INSERT INTO pack_tier_ev_contribution_snapshots (
+                        series_id, ev_roi_snapshot_id, tier_api_id, tier_name,
+                        is_premium, hit_rate, num_cards_in_tier,
+                        avg_value_in_tier_cents, tier_contribution_to_ev_cents,
+                        snapshot_time
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
+                """
+                cur.executemany(tier_contribution_query, contributions_to_insert)
             conn.commit()
-            # print(f"[{datetime.now()}] Stored EV/ROI for {series_id}: EV ${expected_value_total_cents/100:.2f}, ROI {current_roi if current_roi is not None else 'N/A'}")
+            # ev_display = expected_value_total_cents / 100
+            # roi_display = current_roi if current_roi is not None else 'N/A'
+            # print(
+            #     f"[{datetime.now()}] Stored EV/ROI for {series_id}: "
+            #     f"EV ${ev_display:.2f}, ROI {roi_display}"
+            # )
     except Exception as e:
         print(f"[{datetime.now()}] ERROR storing EV/ROI data for {series_id}: {e}")
         conn.rollback()
@@ -546,7 +587,8 @@ def run_tracker():
         db_conn = get_db_connection()
         if not db_conn:
             print(
-                f"[{datetime.now()}] CRITICAL: Failed to establish initial DB connection. Exiting."
+                f"[{datetime.now()}] CRITICAL: Failed to establish initial DB "
+                f"connection. Exiting."
             )
             return
 
@@ -554,7 +596,8 @@ def run_tracker():
             all_categories_data = fetch_all_pack_data_from_categories_endpoint()
             if not all_categories_data or "items" not in all_categories_data:
                 print(
-                    f"[{datetime.now()}] Could not fetch or parse categories overview. Retrying in 60s."
+                    f"[{datetime.now()}] Could not fetch or parse categories "
+                    f"overview. Retrying in 60s."
                 )
                 time.sleep(60)
                 continue
@@ -596,12 +639,15 @@ def run_tracker():
                             break
                 if not found_series_id_for_target:
                     print(
-                        f"WARN: Could not find series_id for target: {target_pack['category_name']} - {target_pack['series_name']}"
+                        f"WARN: Could not find series_id for target: "
+                        f"{target_pack['category_name']} - "
+                        f"{target_pack['series_name']}"
                     )
 
             if not discovered_series_to_process:
                 print(
-                    f"[{datetime.now()}] No series IDs found for targeted packs in this cycle. Waiting 5 minutes..."
+                    f"[{datetime.now()}] No series IDs found for targeted packs "
+                    f"in this cycle. Waiting 5 minutes..."
                 )
                 time.sleep(300)
                 continue
@@ -618,7 +664,8 @@ def run_tracker():
                         db_conn, detailed_pack_data
                     )
 
-                    # Prepare list of all cards currently in the pack for various calculations
+                    # Prepare list of all cards currently in the pack for
+                    # various calculations
                     all_cards_current_snapshot_for_processing = []
                     current_sum_of_all_card_values_cents = 0
 
@@ -634,7 +681,8 @@ def run_tracker():
                                 val if isinstance(val, (int, float)) else 0
                             )
 
-                    # Store the sum of all *available* cards' values (for historical pack value)
+                    # Store the sum of all *available* cards' values
+                    # (for historical pack value)
                     store_pack_total_value_snapshot(
                         db_conn,
                         authoritative_series_id,
@@ -656,20 +704,26 @@ def run_tracker():
                         all_cards_current_snapshot_for_processing,
                     )
 
+                    pack_name_display = detailed_pack_data.get('name', 'N/A')
+                    sum_val_display = current_sum_of_all_card_values_cents / 100
                     print(
-                        f"[{datetime.now()}] Processed: {detailed_pack_data.get('name', 'N/A')} (ID: {authoritative_series_id}) | "
-                        f"Category: {pack_category_from_meta} | Sold this run: {sold_count} | "
-                        f"Sum Value of Avail. Cards: ${current_sum_of_all_card_values_cents / 100:.2f}"
+                        f"[{datetime.now()}] Processed: {pack_name_display} "
+                        f"(ID: {authoritative_series_id}) | "
+                        f"Category: {pack_category_from_meta} | "
+                        f"Sold this run: {sold_count} | "
+                        f"Sum Value of Avail. Cards: ${sum_val_display:.2f}"
                     )
 
                 else:
                     print(
-                        f"[{datetime.now()}] No detailed data fetched for series ID {current_series_id_from_discovery}. Skipping."
+                        f"[{datetime.now()}] No detailed data fetched for series "
+                        f"ID {current_series_id_from_discovery}. Skipping."
                     )
                 time.sleep(2)
 
             print(
-                f"[{datetime.now()}] Completed processing all targeted series for this iteration. Waiting 5 seconds before next cycle..."
+                f"[{datetime.now()}] Completed processing all targeted series "
+                f"for this iteration. Waiting 5 seconds before next cycle..."
             )
             time.sleep(5)
 
@@ -684,11 +738,13 @@ def run_tracker():
             try:
                 db_conn.close()
                 print(
-                    f"[{datetime.now()}] DB connection closed due to error in run_tracker."
+                    f"[{datetime.now()}] DB connection closed due to error in "
+                    f"run_tracker."
                 )
             except Exception as db_close_e:
                 print(
-                    f"[{datetime.now()}] Further error closing DB during exception handling: {db_close_e}"
+                    f"[{datetime.now()}] Further error closing DB during "
+                    f"exception handling: {db_close_e}"
                 )
             db_conn = None
     finally:
@@ -696,11 +752,13 @@ def run_tracker():
             try:
                 db_conn.close()
                 print(
-                    f"[{datetime.now()}] Database connection closed normally at end of run_tracker or in finally."
+                    f"[{datetime.now()}] Database connection closed normally at "
+                    f"end of run_tracker or in finally."
                 )
             except Exception as e:
                 print(
-                    f"[{datetime.now()}] Error closing database connection in finally block: {e}"
+                    f"[{datetime.now()}] Error closing database connection in "
+                    f"finally block: {e}"
                 )
 
 
@@ -716,12 +774,15 @@ if __name__ == "__main__":
             run_schema_sql(temp_conn_for_schema)
         else:
             print(
-                f"[{datetime.now()}] Failed to get DB connection for schema setup. Exiting tracker."
+                f"[{datetime.now()}] Failed to get DB connection for schema "
+                f"setup. Exiting tracker."
             )
             exit(1)
     except Exception as schema_err:
         print(
-            f"[{datetime.now()}] Error during schema run: {schema_err}. Tracker will attempt to continue, but DB might not be correctly set up."
+            f"[{datetime.now()}] Error during schema run: {schema_err}. "
+            f"Tracker will attempt to continue, but DB might not be "
+            f"correctly set up."
         )
     finally:
         if temp_conn_for_schema:

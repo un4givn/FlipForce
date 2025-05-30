@@ -27,7 +27,10 @@ def register_callbacks(app):
         try:
             db_engine = get_dashboard_db_engine()
             if not db_engine:
-                error_message = "Failed to create database engine. Please check configuration and logs."
+                error_message = (
+                    "Failed to create database engine. "
+                    "Please check configuration and logs."
+                )
                 return html.P(error_message, className="text-danger"), html.Div(
                     error_message, className="text-danger"
                 )
@@ -80,10 +83,11 @@ def register_callbacks(app):
                     "No sold card events found for overall summary."
                 )
 
-            df_all_series_meta_from_db = pd.read_sql(
-                "SELECT series_id, name as pack_name, tier as pack_category FROM pack_series_metadata",
-                db_engine,
+            sql_query = (
+                "SELECT series_id, name as pack_name, tier as pack_category "
+                "FROM pack_series_metadata"
             )
+            df_all_series_meta_from_db = pd.read_sql(sql_query, db_engine)
 
             if df_all_series_meta_from_db.empty:
                 return overall_tier_summary_content, html.Div(

@@ -7,15 +7,24 @@ from dotenv import load_dotenv
 # Load environment variables first
 load_dotenv()
 
-from callbacks import register_callbacks
-from config import DB_CONFIG  # For initial check
-from data_fetching import get_dashboard_db_engine  # For the startup test
-from main_layout import create_layout
+# It's good practice to have all imports at the top,
+# but dotenv.load_dotenv() needs to be called before other modules
+# that might depend on those environment variables are imported.
+# So, we'll keep the order as is, but ruff might still flag it if it's strict.
+# If ruff continues to complain about E402 for the imports below,
+# you might consider if `load_dotenv()` can be called even earlier,
+# or if there's a way to configure ruff to ignore this specific case.
+
+from callbacks import register_callbacks  # noqa: E402
+from config import DB_CONFIG  # noqa: E402; For initial check
+from data_fetching import get_dashboard_db_engine  # noqa: E402; For startup test
+from main_layout import create_layout  # noqa: E402
 
 app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
-    suppress_callback_exceptions=True,  # Necessary if callbacks are in other files or layout is dynamic
+    # Necessary if callbacks are in other files or layout is dynamic
+    suppress_callback_exceptions=True,
 )
 server = app.server
 
@@ -33,13 +42,16 @@ if __name__ == "__main__":
         ]
     ):
         print(
-            "CRITICAL: Dashboard database configuration is incomplete. Set FLIPFORCE_POSTGRES_* env variables."
+            "CRITICAL: Dashboard database configuration is incomplete. "
+            "Set FLIPFORCE_POSTGRES_* env variables."
         )
         print(f"Loaded DB Config: {DB_CONFIG}")
     else:
-        print(
-            f"Dashboard starting with DB config: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']} (User: {DB_CONFIG['user']})"
+        db_info = (
+            f"{DB_CONFIG['host']}:{DB_CONFIG['port']}/"
+            f"{DB_CONFIG['dbname']} (User: {DB_CONFIG['user']})"
         )
+        print(f"Dashboard starting with DB config: {db_info}")
         # Optional: Test DB connection on startup
         test_engine = None
         try:

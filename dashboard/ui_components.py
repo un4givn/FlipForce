@@ -10,7 +10,8 @@ from dash import dcc, html
 def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_cards_df):
     """
     Generates a list of Dash Bootstrap Components (dbc) Cards for each series.
-    base_series_df is expected to be pre-merged with latest total values, EV/ROI, and historical min/max for these.
+    base_series_df is expected to be pre-merged with latest total values,
+    EV/ROI, and historical min/max for these.
     all_sold_cards_df is the raw result from fetch_sold_cards_and_pack_metadata.
     """
     if base_series_df.empty:
@@ -76,15 +77,17 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             if pd.notna(curr_total_avail_val_cents)
             else "N/A"
         )
+        min_hist_total_val_cents = row.get('min_historical_total_value_cents')
+        max_hist_total_val_cents = row.get('max_historical_total_value_cents')
 
         min_hist_total_val_display = (
-            f"${row.get('min_historical_total_value_cents', np.nan) / 100:.2f}"
-            if pd.notna(row.get("min_historical_total_value_cents"))
+            f"${min_hist_total_val_cents / 100:.2f}"
+            if pd.notna(min_hist_total_val_cents)
             else "N/A"
         )
         max_hist_total_val_display = (
-            f"${row.get('max_historical_total_value_cents', np.nan) / 100:.2f}"
-            if pd.notna(row.get("max_historical_total_value_cents"))
+            f"${max_hist_total_val_cents / 100:.2f}"
+            if pd.notna(max_hist_total_val_cents)
             else "N/A"
         )
 
@@ -101,7 +104,6 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
         current_roi_display = (
             f"{current_roi_val:.2%}"
             if pd.notna(current_roi_val)
-            and current_roi_val is not None
             and not (isinstance(current_roi_val, float) and np.isinf(current_roi_val))
             else "N/A"
         )
@@ -126,7 +128,10 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             if pack_category_val not in ["Unknown Category", None]
             else pack_name_val
         )
-        button_header_text = f"{full_display_name_card} — ROI: {current_roi_display} — EV: {current_ev_display}"
+        button_header_text = (
+            f"{full_display_name_card} — ROI: {current_roi_display} "
+            f"— EV: {current_ev_display}"
+        )
 
         card_body_items = [
             html.H6("Sales Summary", className="mt-2"),
@@ -179,7 +184,8 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                 [
                     dbc.Col(
                         html.P(
-                            f"Current Total Available Value: {curr_total_avail_val_display}"
+                            "Current Total Available Value: "
+                            f"{curr_total_avail_val_display}"
                         ),
                         width=12,
                     ),
@@ -189,13 +195,15 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                 [
                     dbc.Col(
                         html.P(
-                            f"Historical Min Available Value: {min_hist_total_val_display}"
+                            "Historical Min Available Value: "
+                            f"{min_hist_total_val_display}"
                         ),
                         width=6,
                     ),
                     dbc.Col(
                         html.P(
-                            f"Historical Max Available Value: {max_hist_total_val_display}"
+                            "Historical Max Available Value: "
+                            f"{max_hist_total_val_display}"
                         ),
                         width=6,
                     ),

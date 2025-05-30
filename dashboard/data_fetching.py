@@ -15,11 +15,15 @@ def get_dashboard_db_engine():
         ]
     ):
         print(
-            "[ERROR] Dashboard DB configuration is incomplete. Check environment variables."
+            "[ERROR] Dashboard DB configuration is incomplete. "
+            "Check environment variables."
         )
         return None
     try:
-        db_uri = f"postgresql+psycopg2://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
+        db_uri = (
+            f"postgresql+psycopg2://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
+            f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
+        )
         engine = create_engine(db_uri)
         return engine
     except Exception as e:
@@ -55,16 +59,20 @@ def fetch_sold_cards_and_pack_metadata(db_engine):
 
 
 def fetch_pack_total_value_data(db_engine):
-    """Fetches current total available value (sum of cards) and its historical min/max."""
+    """Fetches current total available value (sum of cards) and its
+    historical min/max."""
     if not db_engine:
         return pd.DataFrame(), pd.DataFrame()
 
     query_latest_total_value = """
     WITH LatestPackValue AS (
-        SELECT series_id, total_estimated_value_cents AS current_total_available_value_cents,
-               ROW_NUMBER() OVER(PARTITION BY series_id ORDER BY snapshot_time DESC) as rn
+        SELECT series_id,
+               total_estimated_value_cents AS current_total_available_value_cents,
+               ROW_NUMBER() OVER(PARTITION BY series_id
+                                 ORDER BY snapshot_time DESC) as rn
         FROM pack_total_value_snapshots
-    ) SELECT series_id, current_total_available_value_cents FROM LatestPackValue WHERE rn = 1;
+    ) SELECT series_id, current_total_available_value_cents
+      FROM LatestPackValue WHERE rn = 1;
     """
     latest_df = pd.read_sql(query_latest_total_value, db_engine)
     if (
@@ -112,9 +120,11 @@ def fetch_ev_roi_data(db_engine):
     query_latest_ev_roi = """
     WITH LatestEVROI AS (
         SELECT series_id, expected_value_cents, static_pack_cost_cents, roi,
-               ROW_NUMBER() OVER(PARTITION BY series_id ORDER BY snapshot_time DESC) as rn
+               ROW_NUMBER() OVER(PARTITION BY series_id
+                                 ORDER BY snapshot_time DESC) as rn
         FROM pack_ev_roi_snapshots
-    ) SELECT series_id, expected_value_cents, static_pack_cost_cents, roi FROM LatestEVROI WHERE rn = 1;
+    ) SELECT series_id, expected_value_cents, static_pack_cost_cents, roi
+      FROM LatestEVROI WHERE rn = 1;
     """
     latest_ev_roi_df = pd.read_sql(query_latest_ev_roi, db_engine)
 
