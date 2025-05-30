@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS pack_series_metadata (
     series_id UUID PRIMARY KEY,
     name TEXT,
-    tier TEXT,
+    tier TEXT, -- This tier is for the series/pack itself
     cost_cents INTEGER,
     status TEXT,
     last_seen TIMESTAMP DEFAULT NOW()
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS pack_max_sold (
 CREATE TABLE IF NOT EXISTS pack_card_snapshots (
     series_id UUID NOT NULL,
     card_id UUID NOT NULL,
+    tier TEXT, -- <<< ADDED: To store the tier name for the card
     player_name TEXT,
     overall INTEGER,
     insert_name TEXT, -- Matches the INSERT statement in tracker.py
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS sold_card_events (
     event_id SERIAL PRIMARY KEY, -- Added a primary key
     series_id UUID NOT NULL,
     card_id UUID NOT NULL,
+    tier TEXT, -- <<< ADDED/CONFIRMED: To store the tier name for the card event
     player_name TEXT,
     overall INTEGER,
     insert_name TEXT,
@@ -69,10 +71,6 @@ CREATE TABLE IF NOT EXISTS sold_card_events (
     grading_company TEXT,
     estimated_value_cents INTEGER,
     sold_at TIMESTAMP DEFAULT NOW()
-    -- Removed PRIMARY KEY (series_id, card_id, sold_at) to allow multiple sales of the same card if needed,
-    -- or re-evaluate if card_id should be unique per series in this context.
-    -- If a card can only be "sold" once from a pack snapshot, the original PK might be okay,
-    -- but event tables often benefit from their own unique ID.
     -- Optional: FOREIGN KEY (series_id) REFERENCES pack_series_metadata(series_id)
 );
 
