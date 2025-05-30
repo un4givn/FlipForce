@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.project
+*.classpath
+*.DS_Store
+
+# Secrets - VERY IMPORTANT
+.env
+
+# Docker
+# If you have any local docker-compose override files you don't want to share:
+# docker-compose.override.yml
+
+# Databases (if stored locally and not as a Docker volume outside the project)
+# pgdata/ # Your pgdata is a named volume, so this is less critical here, but good practice
+
+# Log files
+*.log
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

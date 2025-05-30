@@ -1,0 +1,40 @@
+services:
+  flipforce-db:
+    image: postgres:15
+    container_name: flipforce-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT_ON_HOST}:5432"
+
+  tracker:
+    build:
+      context: ./backend/tracker
+    container_name: flipforce-tracker
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - flipforce-db
+    working_dir: /app
+
+  dashboard:
+    build:
+      context: ./dashboard
+    container_name: flipforce-dashboard
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8050:8050"
+    depends_on:
+      - flipforce-db
+    working_dir: /app
+
+volumes:
+  pgdata:
