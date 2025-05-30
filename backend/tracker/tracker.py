@@ -107,7 +107,6 @@ def store_snapshot_and_update_max(conn, pack_detail_data):
         total_count_api = pack_detail_data.get("packsTotal", 0)
         status = "active" if pack_detail_data.get("isActive") else "inactive"
 
-        # --- Swapped Order: Insert/Update pack_series_metadata FIRST ---
         cur.execute(
             """
             INSERT INTO pack_series_metadata (series_id, name, tier, cost_cents, status)
@@ -122,7 +121,6 @@ def store_snapshot_and_update_max(conn, pack_detail_data):
             (series_id_from_pack, name, series_tier, cost, status)
         )
         
-        # --- Then insert into pack_snapshots ---
         cur.execute(
             """
             INSERT INTO pack_snapshots (series_id, packs_sold, packs_total)
@@ -130,7 +128,6 @@ def store_snapshot_and_update_max(conn, pack_detail_data):
             """,
             (series_id_from_pack, sold_count_api, total_count_api)
         )
-        # --- End of swapped order ---
 
         cur.execute("SELECT max_sold FROM pack_max_sold WHERE series_id = %s;", (series_id_from_pack,))
         result = cur.fetchone()
@@ -239,7 +236,7 @@ def compute_newly_sold_cards_and_snapshot(conn, series_id, current_cards_with_ti
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """, snapshot_insert_values
                 )
-            elif current_cards_with_tier: # Only print if current_cards_with_tier was not empty to begin with
+            elif current_cards_with_tier:
                  print(f"[DEBUG] current_cards_with_tier provided for series {series_id}, but no valid cards found to snapshot after filtering.")
 
         if newly_sold_count > 0:
@@ -255,7 +252,30 @@ def compute_newly_sold_cards_and_snapshot(conn, series_id, current_cards_with_ti
             )
     conn.commit() 
     return newly_sold_count
-    
+
+def store_current_pack_total_value(conn, series_id, total_value_cents):
+    """
+    Stores a snapshot of the total estimated value of all cards currently in the pack series.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO pack_total_value_snapshots (series_id, total_estimated_value_cents, snapshot_time)
+                VALUES (%s, %s, NOW());
+                """,
+                (series_id, total_value_cents)
+            )
+        conn.commit()
+        print(f"[{datetime.now()}] Recorded total available pack value for series {series_id}: {total_value_cents} cents.")
+    except Exception as e:
+        print(f"[{datetime.now()}] ERROR storing total pack value for series {series_id}: {e}")
+        if conn: # Attempt to rollback if connection exists
+            try:
+                conn.rollback()
+            except Exception as rb_e:
+                print(f"[{datetime.now()}] ERROR during rollback for total pack value: {rb_e}")
+
 def run_tracker():
     print(f"[{datetime.now()}] FlipForce tracker started for targeted packs.")
     db_conn = None
@@ -342,17 +362,34 @@ def run_tracker():
                     else:
                         print(f"[{datetime.now()}] WARN: 'slabPackTiers' not found or not a list in detailed_pack_data for series {authoritative_series_id}. Card-specific tiers (Grail, Chase) cannot be extracted.")
                     
-                    # Important: Call store_snapshot_and_update_max first to ensure pack_series_metadata exists
+                    # --- Calculate and store current total value of available cards ---
+                    current_total_available_value_cents = 0
+                    for card_data in all_cards_for_this_series_with_tier:
+                        value = card_data.get("estimatedValueCents")
+                        if isinstance(value, (int, float)): # Check if it's a number
+                            current_total_available_value_cents += value
+                        elif value is not None: # Log if it exists but isn't a number (e.g. string)
+                            print(f"[{datetime.now()}] WARN: 'estimatedValueCents' for a card in series {authoritative_series_id} is not a number: {value}. Skipping this value.")
+                        # If value is None, it's correctly ignored (adds 0 implicitly if we started sum with 0)
+                    
+                    if db_conn:
+                        store_current_pack_total_value(db_conn, authoritative_series_id, current_total_available_value_cents)
+                    # --- End total value calculation and storage ---
+
                     store_snapshot_and_update_max(db_conn, detailed_pack_data) # type: ignore
                     sold_count = compute_newly_sold_cards_and_snapshot(db_conn, authoritative_series_id, all_cards_for_this_series_with_tier)
                     
-                    print(f"[{datetime.now()}] Pack processed: {detailed_pack_data.get('name', 'Unknown Name')} (Series ID: {authoritative_series_id}) | Cards in API: {len(all_cards_for_this_series_with_tier)} | Sold this run: {sold_count}")
+                    pack_name_log = detailed_pack_data.get('name', 'Unknown Name')
+                    total_value_log = current_total_available_value_cents / 100.0 if isinstance(current_total_available_value_cents, (int, float)) else 'N/A'
+                    if isinstance(total_value_log, float): total_value_log = f"{total_value_log:.2f}"
+
+                    print(f"[{datetime.now()}] Pack processed: {pack_name_log} (Series ID: {authoritative_series_id}) | Cards in API: {len(all_cards_for_this_series_with_tier)} | Sold this run: {sold_count} | Total Value Now: ${total_value_log}")
                 else:
                     print(f"[{datetime.now()}] No detailed data fetched for series (Discovered ID: {current_series_id_from_discovery}). Skipping.")
                 time.sleep(2) 
             
             print(f"[{datetime.now()}] Completed processing all targeted series for this iteration. Waiting 15 minutes before next cycle...")
-            time.sleep(1)
+            time.sleep(2) # 15 minutes
             
     except KeyboardInterrupt:
         print(f"[{datetime.now()}] Tracker stopped by user.")
@@ -362,15 +399,14 @@ def run_tracker():
         traceback.print_exc()
         if db_conn:
             try:
-                db_conn.close()
+                db_conn.close() # Close connection on error
             except Exception as db_close_e:
                 print(f"[{datetime.now()}] Error closing DB connection during exception handling: {db_close_e}")
-            db_conn = None 
+            db_conn = None # Set to None after closing or if close fails
             print(f"[{datetime.now()}] DB connection closed due to error. Tracker will attempt to re-establish on next cycle if error is recoverable, or exit if loop is broken.")
-            # Consider a longer sleep or a mechanism to prevent rapid error loops if the DB connection itself is the issue
-            time.sleep(60) 
+            time.sleep(60) # Wait a bit before potential restart if in a loop not shown
     finally:
-        if db_conn: 
+        if db_conn: # Ensure connection is closed if loop finishes or on normal exit
             try:
                 db_conn.close()
                 print(f"[{datetime.now()}] Database connection closed normally.")
@@ -383,12 +419,12 @@ if __name__ == "__main__":
     try:
         temp_conn_for_schema = get_db_connection()
         if temp_conn_for_schema:
-            run_schema_sql(temp_conn_for_schema)
+            run_schema_sql(temp_conn_for_schema) # This will execute the updated schema.sql
         else:
             print(f"[{datetime.now()}] Failed to get DB connection for schema setup. Exiting tracker.")
             exit(1) 
     except Exception as schema_err:
-        print(f"[{datetime.now()}] Error during schema run: {schema_err}. Continuing to tracker, but DB might not be set up.")
+        print(f"[{datetime.now()}] Error during schema run: {schema_err}. Continuing to tracker, but DB might not be set up correctly.")
     finally:
         if temp_conn_for_schema:
             temp_conn_for_schema.close()

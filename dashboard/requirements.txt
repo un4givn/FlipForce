@@ -3,3 +3,4 @@ plotly
 psycopg2-binary
 pandas
 dash-bootstrap-components
+numpy

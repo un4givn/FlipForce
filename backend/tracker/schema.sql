@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS sold_card_events (
     -- Optional: FOREIGN KEY (series_id) REFERENCES pack_series_metadata(series_id)
 );
 
+-- New table to store snapshots of the total estimated value of cards in a pack
+CREATE TABLE IF NOT EXISTS pack_total_value_snapshots (
+    snapshot_id SERIAL PRIMARY KEY,
+    series_id UUID NOT NULL,
+    total_estimated_value_cents BIGINT, -- Sum of estimatedValueCents for all cards in the pack at snapshot_time
+    snapshot_time TIMESTAMP DEFAULT NOW(),
+    FOREIGN KEY (series_id) REFERENCES pack_series_metadata(series_id) ON DELETE CASCADE -- Optional: Add ON DELETE CASCADE
+);
+
 -- Ensure pack_sales_tracker is defined
 CREATE TABLE IF NOT EXISTS pack_sales_tracker (
     series_id UUID PRIMARY KEY,
