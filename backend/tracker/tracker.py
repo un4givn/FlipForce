@@ -41,24 +41,25 @@ ARENA_CLUB_API_BASE_URL = "https://api.arenaclub.com/v2/slab-pack-series/"
 # Static pack costs in cents for ROI calculation
 STATIC_PACK_COSTS_CENTS = {
     "Diamond": 100000,  # $1,000
-    "Emerald": 50000,   # $500
-    "Ruby": 25000,      # $250
-    "Gold": 10000,      # $100
-    "Silver": 5000,     # $50
-    "Misc.": 2500,      # $25 (Matches API example "Misc.")
-    "Misc": 2500,       # Fallback for "Misc" if API varies
+    "Emerald": 50000,  # $500
+    "Ruby": 25000,  # $250
+    "Gold": 10000,  # $100
+    "Silver": 5000,  # $50
+    "Misc.": 2500,  # $25 (Matches API example "Misc.")
+    "Misc": 2500,  # Fallback for "Misc" if API varies
 }
+
 
 def get_static_pack_cost(pack_category_name):
     """Gets the static cost for a given pack category name."""
     if not pack_category_name:
         return None
     cost = STATIC_PACK_COSTS_CENTS.get(pack_category_name)
-    if cost is None: # Try matching common variations if direct match fails
-        if pack_category_name.endswith('.'):
+    if cost is None:  # Try matching common variations if direct match fails
+        if pack_category_name.endswith("."):
             cost = STATIC_PACK_COSTS_CENTS.get(pack_category_name[:-1])
         else:
-            cost = STATIC_PACK_COSTS_CENTS.get(pack_category_name + '.')
+            cost = STATIC_PACK_COSTS_CENTS.get(pack_category_name + ".")
     return cost
 
 
@@ -146,29 +147,40 @@ def run_schema_sql(conn):
         print(f"[{datetime.now()}] Schema loaded/verified.")
     except Exception as e:
         print(f"[{datetime.now()}] Failed to run schema.sql: {e}")
-        conn.rollback() 
+        conn.rollback()
         raise
+
 
 # Combines metadata storage and sales snapshot storage
 def store_metadata_and_sales_snapshot(conn, pack_detail_data):
     """Stores pack metadata, current sales snapshot, and updates max sold count.
     Returns the pack category name (e.g., "Diamond") from metadata.
     """
-    pack_category_name = "Unknown" 
+    pack_category_name = "Unknown"
     with conn.cursor() as cur:
         series_id_from_pack = pack_detail_data["id"]
         name = pack_detail_data.get("name", "Unknown")
 
         # Determine pack_category_name (e.g., "Diamond", "Emerald")
-        if pack_detail_data.get("slabPackCategory") and isinstance(pack_detail_data["slabPackCategory"], dict):
-            pack_category_name = pack_detail_data["slabPackCategory"].get("name", "Unknown")
-        elif pack_detail_data.get("tier"): # Fallback if structure is different for some reason
-             pack_category_name = pack_detail_data.get("tier", "Unknown")
+        if pack_detail_data.get("slabPackCategory") and isinstance(
+            pack_detail_data["slabPackCategory"], dict
+        ):
+            pack_category_name = pack_detail_data["slabPackCategory"].get(
+                "name", "Unknown"
+            )
+        elif pack_detail_data.get(
+            "tier"
+        ):  # Fallback if structure is different for some reason
+            pack_category_name = pack_detail_data.get("tier", "Unknown")
 
         # Cost from API (for storage in pack_series_metadata, may differ from static cost for ROI)
         cost_from_api = pack_detail_data.get("costCents")
-        if cost_from_api is None and pack_detail_data.get("slabPackCategory"): # Check category level if not on series
-            cost_from_api = pack_detail_data.get("slabPackCategory", {}).get("priceCents", 0)
+        if cost_from_api is None and pack_detail_data.get(
+            "slabPackCategory"
+        ):  # Check category level if not on series
+            cost_from_api = pack_detail_data.get("slabPackCategory", {}).get(
+                "priceCents", 0
+            )
         cost_from_api = cost_from_api if cost_from_api is not None else 0
 
         sold_count_api = pack_detail_data.get("packsSold", 0)
@@ -234,14 +246,14 @@ def wait_for_postgres(retries=30, delay=2):
         try:
             conn_pg = get_db_connection()
             if conn_pg:
-                conn_pg.close() # Successfully connected, close it
+                conn_pg.close()  # Successfully connected, close it
                 print(f"[{datetime.now()}] Postgres is ready.")
-                return True # Indicate success
+                return True  # Indicate success
         except psycopg2.OperationalError:
             print(f"[{datetime.now()}] Waiting for Postgres ({i + 1}/{retries})...")
             time.sleep(delay)
     print(f"[{datetime.now()}] Postgres not ready after multiple attempts.")
-    return False # Indicate failure
+    return False  # Indicate failure
 
 
 def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
@@ -249,18 +261,22 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
     Compares current pack card inventory against the previous snapshot to identify
     and record newly sold cards. Updates pack_card_snapshots and pack_sales_tracker.
     """
-    current_card_ids = set(card["id"] for card in current_cards_with_tier_info if "id" in card)
+    current_card_ids = set(
+        card["id"] for card in current_cards_with_tier_info if "id" in card
+    )
 
     with conn.cursor() as cur:
-        cur.execute("SELECT * FROM pack_card_snapshots WHERE series_id = %s;", (series_id,))
+        cur.execute(
+            "SELECT * FROM pack_card_snapshots WHERE series_id = %s;", (series_id,)
+        )
         prev_snapshots = cur.fetchall()
         # Ensure cur.description is not None before list comprehension
         column_names = [desc[0] for desc in cur.description] if cur.description else []
-        
+
         prev_card_ids = set()
         prev_card_data_map = {}
 
-        if column_names: # Proceed only if column names could be fetched
+        if column_names:  # Proceed only if column names could be fetched
             for row_data in prev_snapshots:
                 card_dict = dict(zip(column_names, row_data))
                 if "card_id" in card_dict:
@@ -268,8 +284,10 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
                     prev_card_data_map[card_dict["card_id"]] = card_dict
                 else:
                     # This log helps diagnose schema/data integrity issues
-                    print(f"[ERROR] compute_and_store_sold_cards: 'card_id' not found in snapshot row for series {series_id}. Columns: {column_names}")
-        
+                    print(
+                        f"[ERROR] compute_and_store_sold_cards: 'card_id' not found in snapshot row for series {series_id}. Columns: {column_names}"
+                    )
+
         sold_card_ids = prev_card_ids - current_card_ids
         newly_sold_count = len(sold_card_ids)
 
@@ -277,51 +295,90 @@ def compute_and_store_sold_cards(conn, series_id, current_cards_with_tier_info):
             enriched_sales = []
             for card_id_sold in sold_card_ids:
                 c_data = prev_card_data_map.get(card_id_sold, {})
-                enriched_sales.append((
-                    series_id, card_id_sold, c_data.get("tier"), c_data.get("player_name"),
-                    c_data.get("overall"), c_data.get("insert_name"), c_data.get("set_number"),
-                    c_data.get("set_name"), c_data.get("holo"), c_data.get("rarity"),
-                    c_data.get("parallel_number"), c_data.get("parallel_total"),
-                    c_data.get("parallel_name"), c_data.get("front_image"), c_data.get("back_image"),
-                    c_data.get("slab_kind"), c_data.get("grading_company"),
-                    c_data.get("estimated_value_cents")
-                ))
+                enriched_sales.append(
+                    (
+                        series_id,
+                        card_id_sold,
+                        c_data.get("tier"),
+                        c_data.get("player_name"),
+                        c_data.get("overall"),
+                        c_data.get("insert_name"),
+                        c_data.get("set_number"),
+                        c_data.get("set_name"),
+                        c_data.get("holo"),
+                        c_data.get("rarity"),
+                        c_data.get("parallel_number"),
+                        c_data.get("parallel_total"),
+                        c_data.get("parallel_name"),
+                        c_data.get("front_image"),
+                        c_data.get("back_image"),
+                        c_data.get("slab_kind"),
+                        c_data.get("grading_company"),
+                        c_data.get("estimated_value_cents"),
+                    )
+                )
             if enriched_sales:
-                cur.executemany("""
+                cur.executemany(
+                    """
                     INSERT INTO sold_card_events (series_id, card_id, tier, player_name, overall, insert_name, set_number, set_name, holo, rarity, parallel_number, parallel_total, parallel_name, front_image, back_image, slab_kind, grading_company, estimated_value_cents, sold_at)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, NOW());
-                    """, enriched_sales)
-            
+                    """,
+                    enriched_sales,
+                )
+
             # Update pack_sales_tracker
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO pack_sales_tracker (series_id, total_sold, last_checked) VALUES (%s, %s, NOW())
                 ON CONFLICT (series_id) DO UPDATE SET total_sold = pack_sales_tracker.total_sold + EXCLUDED.total_sold, last_checked = NOW();
-                """, (series_id, newly_sold_count))
+                """,
+                (series_id, newly_sold_count),
+            )
 
         # Update current snapshot of cards in pack
-        cur.execute("DELETE FROM pack_card_snapshots WHERE series_id = %s;", (series_id,))
+        cur.execute(
+            "DELETE FROM pack_card_snapshots WHERE series_id = %s;", (series_id,)
+        )
         snapshot_insert_values = []
         if current_cards_with_tier_info:
             for card_api_data in current_cards_with_tier_info:
-                if "id" not in card_api_data: 
-                    print(f"[ERROR] compute_and_store_sold_cards: Card data missing 'id' for series {series_id}: {card_api_data.get('playerName')}")
+                if "id" not in card_api_data:
+                    print(
+                        f"[ERROR] compute_and_store_sold_cards: Card data missing 'id' for series {series_id}: {card_api_data.get('playerName')}"
+                    )
                     continue
-                snapshot_insert_values.append((
-                    series_id, card_api_data["id"], card_api_data.get("tier_name"), # tier_name was added during processing
-                    card_api_data.get("playerName"), card_api_data.get("overall"),
-                    card_api_data.get("insert"), card_api_data.get("setNumber"),
-                    card_api_data.get("setName"), card_api_data.get("holo"),
-                    card_api_data.get("rarity"), card_api_data.get("parallelNumber"),
-                    card_api_data.get("parallelTotal"), card_api_data.get("parallelName"),
-                    card_api_data.get("frontSlabPictureUrl"), card_api_data.get("backSlabPictureUrl"),
-                    card_api_data.get("slabKind"), card_api_data.get("gradingCompany"),
-                    card_api_data.get("estimatedValueCents")
-                ))
+                snapshot_insert_values.append(
+                    (
+                        series_id,
+                        card_api_data["id"],
+                        card_api_data.get(
+                            "tier_name"
+                        ),  # tier_name was added during processing
+                        card_api_data.get("playerName"),
+                        card_api_data.get("overall"),
+                        card_api_data.get("insert"),
+                        card_api_data.get("setNumber"),
+                        card_api_data.get("setName"),
+                        card_api_data.get("holo"),
+                        card_api_data.get("rarity"),
+                        card_api_data.get("parallelNumber"),
+                        card_api_data.get("parallelTotal"),
+                        card_api_data.get("parallelName"),
+                        card_api_data.get("frontSlabPictureUrl"),
+                        card_api_data.get("backSlabPictureUrl"),
+                        card_api_data.get("slabKind"),
+                        card_api_data.get("gradingCompany"),
+                        card_api_data.get("estimatedValueCents"),
+                    )
+                )
             if snapshot_insert_values:
-                cur.executemany("""
+                cur.executemany(
+                    """
                     INSERT INTO pack_card_snapshots (series_id, card_id, tier, player_name, overall, insert_name, set_number, set_name, holo, rarity, parallel_number, parallel_total, parallel_name, front_image, back_image, slab_kind, grading_company, estimated_value_cents)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
-                    """, snapshot_insert_values)
+                    """,
+                    snapshot_insert_values,
+                )
     conn.commit()
     return newly_sold_count
 
@@ -332,25 +389,36 @@ def store_pack_total_value_snapshot(conn, series_id, total_value_cents):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO pack_total_value_snapshots (series_id, total_estimated_value_cents, snapshot_time) VALUES (%s, %s, NOW());",
-                (series_id, total_value_cents)
+                (series_id, total_value_cents),
             )
         conn.commit()
         # print(f"[{datetime.now()}] Recorded total available pack value for series {series_id}: {total_value_cents} cents.")
     except Exception as e:
-        print(f"[{datetime.now()}] ERROR storing total pack value for series {series_id}: {e}")
+        print(
+            f"[{datetime.now()}] ERROR storing total pack value for series {series_id}: {e}"
+        )
         if conn:
-            try: conn.rollback()
-            except Exception as rb_e: print(f"[{datetime.now()}] ERROR during rollback for total pack value: {rb_e}")
+            try:
+                conn.rollback()
+            except Exception as rb_e:
+                print(
+                    f"[{datetime.now()}] ERROR during rollback for total pack value: {rb_e}"
+                )
 
-def calculate_and_store_ev_roi(conn, series_id, pack_category_from_meta, detailed_pack_data):
+
+def calculate_and_store_ev_roi(
+    conn, series_id, pack_category_from_meta, detailed_pack_data
+):
     """Calculates EV and ROI based on tier hit rates and stores them."""
     num_premium_cards_per_pack = detailed_pack_data.get("numPremiumCardsPerPack", 0)
-    num_non_premium_cards_per_pack = detailed_pack_data.get("numNonPremiumCardsPerPack", 0)
-    
-    ev_premium_slot_total_cents = 0.0 # Use float for intermediate sum
-    ev_non_premium_slot_total_cents = 0.0 # Use float for intermediate sum
+    num_non_premium_cards_per_pack = detailed_pack_data.get(
+        "numNonPremiumCardsPerPack", 0
+    )
+
+    ev_premium_slot_total_cents = 0.0  # Use float for intermediate sum
+    ev_non_premium_slot_total_cents = 0.0  # Use float for intermediate sum
     tier_contributions_for_db = []
-    
+
     slab_pack_tiers_data = detailed_pack_data.get("slabPackTiers", [])
 
     for tier_info in slab_pack_tiers_data:
@@ -362,54 +430,64 @@ def calculate_and_store_ev_roi(conn, series_id, pack_category_from_meta, detaile
             hit_rate = float(tier_info.get("hitRate", 0.0))
         except (ValueError, TypeError):
             hit_rate = 0.0
-            print(f"WARN: Invalid or missing hitRate for tier {tier_name} in series {series_id}. Defaulting to 0.0.")
+            print(
+                f"WARN: Invalid or missing hitRate for tier {tier_name} in series {series_id}. Defaulting to 0.0."
+            )
 
-        
         cards_in_tier = tier_info.get("cards", [])
         num_cards_in_this_tier = len(cards_in_tier)
         sum_value_in_tier_cents = 0
-        
+
         if num_cards_in_this_tier > 0:
             for card_data in cards_in_tier:
                 val = card_data.get("estimatedValueCents")
                 sum_value_in_tier_cents += val if isinstance(val, (int, float)) else 0
-            avg_value_in_tier_cents = float(sum_value_in_tier_cents) / num_cards_in_this_tier
+            avg_value_in_tier_cents = (
+                float(sum_value_in_tier_cents) / num_cards_in_this_tier
+            )
         else:
             avg_value_in_tier_cents = 0.0
-            
+
         tier_ev_contribution_cents = avg_value_in_tier_cents * hit_rate
-        
-        tier_contributions_for_db.append({
-            'tier_api_id': tier_api_id, 'tier_name': tier_name,
-            'is_premium': is_premium, 'hit_rate': hit_rate,
-            'num_cards_in_tier': num_cards_in_this_tier,
-            'avg_value_in_tier_cents': round(avg_value_in_tier_cents),
-            'tier_contribution_to_ev_cents': round(tier_ev_contribution_cents)
-        })
-        
+
+        tier_contributions_for_db.append(
+            {
+                "tier_api_id": tier_api_id,
+                "tier_name": tier_name,
+                "is_premium": is_premium,
+                "hit_rate": hit_rate,
+                "num_cards_in_tier": num_cards_in_this_tier,
+                "avg_value_in_tier_cents": round(avg_value_in_tier_cents),
+                "tier_contribution_to_ev_cents": round(tier_ev_contribution_cents),
+            }
+        )
+
         if is_premium:
             ev_premium_slot_total_cents += tier_ev_contribution_cents
         else:
             ev_non_premium_slot_total_cents += tier_ev_contribution_cents
-            
+
     expected_value_total_cents = round(
-        (ev_premium_slot_total_cents * num_premium_cards_per_pack) + 
-        (ev_non_premium_slot_total_cents * num_non_premium_cards_per_pack)
+        (ev_premium_slot_total_cents * num_premium_cards_per_pack)
+        + (ev_non_premium_slot_total_cents * num_non_premium_cards_per_pack)
     )
-    
+
     static_pack_cost_val = get_static_pack_cost(pack_category_from_meta)
-    current_roi = 0.0 # Default ROI
+    current_roi = 0.0  # Default ROI
 
     if static_pack_cost_val is not None and static_pack_cost_val > 0:
         current_roi = (float(expected_value_total_cents) / static_pack_cost_val) - 1.0
     elif static_pack_cost_val == 0:
-        print(f"[{datetime.now()}] WARN: Static pack cost is 0 for category '{pack_category_from_meta}', series {series_id}. ROI is effectively infinite or undefined.")
-        current_roi = float('inf') # Or handle as per desired logic, maybe None
-    else: # static_pack_cost_val is None
-        print(f"[{datetime.now()}] WARN: Static pack cost not found for category '{pack_category_from_meta}', series {series_id}. ROI cannot be calculated.")
-        static_pack_cost_val = None # Ensure it's None if not found for DB
+        print(
+            f"[{datetime.now()}] WARN: Static pack cost is 0 for category '{pack_category_from_meta}', series {series_id}. ROI is effectively infinite or undefined."
+        )
+        current_roi = float("inf")  # Or handle as per desired logic, maybe None
+    else:  # static_pack_cost_val is None
+        print(
+            f"[{datetime.now()}] WARN: Static pack cost not found for category '{pack_category_from_meta}', series {series_id}. ROI cannot be calculated."
+        )
+        static_pack_cost_val = None  # Ensure it's None if not found for DB
         current_roi = None
-
 
     # Store in DB
     try:
@@ -419,25 +497,40 @@ def calculate_and_store_ev_roi(conn, series_id, pack_category_from_meta, detaile
                 INSERT INTO pack_ev_roi_snapshots (series_id, expected_value_cents, static_pack_cost_cents, roi, num_premium_cards_per_pack, num_non_premium_cards_per_pack, snapshot_time)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING snapshot_id;
                 """,
-                (series_id, expected_value_total_cents, static_pack_cost_val, current_roi, num_premium_cards_per_pack, num_non_premium_cards_per_pack)
+                (
+                    series_id,
+                    expected_value_total_cents,
+                    static_pack_cost_val,
+                    current_roi,
+                    num_premium_cards_per_pack,
+                    num_non_premium_cards_per_pack,
+                ),
             )
             ev_roi_snapshot_id = cur.fetchone()[0]
 
             if ev_roi_snapshot_id and tier_contributions_for_db:
                 contributions_to_insert = []
                 for tc in tier_contributions_for_db:
-                    contributions_to_insert.append((
-                        series_id, ev_roi_snapshot_id, tc['tier_api_id'], tc['tier_name'],
-                        tc['is_premium'], tc['hit_rate'], tc['num_cards_in_tier'],
-                        tc['avg_value_in_tier_cents'], tc['tier_contribution_to_ev_cents']
-                    ))
-                
+                    contributions_to_insert.append(
+                        (
+                            series_id,
+                            ev_roi_snapshot_id,
+                            tc["tier_api_id"],
+                            tc["tier_name"],
+                            tc["is_premium"],
+                            tc["hit_rate"],
+                            tc["num_cards_in_tier"],
+                            tc["avg_value_in_tier_cents"],
+                            tc["tier_contribution_to_ev_cents"],
+                        )
+                    )
+
                 cur.executemany(
                     """
                     INSERT INTO pack_tier_ev_contribution_snapshots (series_id, ev_roi_snapshot_id, tier_api_id, tier_name, is_premium, hit_rate, num_cards_in_tier, avg_value_in_tier_cents, tier_contribution_to_ev_cents, snapshot_time)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
                     """,
-                    contributions_to_insert
+                    contributions_to_insert,
                 )
             conn.commit()
             # print(f"[{datetime.now()}] Stored EV/ROI for {series_id}: EV ${expected_value_total_cents/100:.2f}, ROI {current_roi if current_roi is not None else 'N/A'}")
@@ -452,13 +545,17 @@ def run_tracker():
     try:
         db_conn = get_db_connection()
         if not db_conn:
-            print(f"[{datetime.now()}] CRITICAL: Failed to establish initial DB connection. Exiting.")
+            print(
+                f"[{datetime.now()}] CRITICAL: Failed to establish initial DB connection. Exiting."
+            )
             return
 
         while True:
             all_categories_data = fetch_all_pack_data_from_categories_endpoint()
             if not all_categories_data or "items" not in all_categories_data:
-                print(f"[{datetime.now()}] Could not fetch or parse categories overview. Retrying in 60s.")
+                print(
+                    f"[{datetime.now()}] Could not fetch or parse categories overview. Retrying in 60s."
+                )
                 time.sleep(60)
                 continue
 
@@ -468,24 +565,45 @@ def run_tracker():
                 target_cat_name_lower = target_pack["category_name"].lower()
                 target_series_name_lower = target_pack["series_name"].lower()
                 for category_from_api in all_categories_data.get("items", []):
-                    if category_from_api.get("name", "").lower() == target_cat_name_lower:
-                        for series_in_category in category_from_api.get("slabPackSeries", []):
-                            if series_in_category.get("name", "").lower() == target_series_name_lower:
-                                found_series_id_for_target = series_in_category.get("id")
+                    if (
+                        category_from_api.get("name", "").lower()
+                        == target_cat_name_lower
+                    ):
+                        for series_in_category in category_from_api.get(
+                            "slabPackSeries", []
+                        ):
+                            if (
+                                series_in_category.get("name", "").lower()
+                                == target_series_name_lower
+                            ):
+                                found_series_id_for_target = series_in_category.get(
+                                    "id"
+                                )
                                 if found_series_id_for_target:
-                                    discovered_series_to_process.append({
-                                        "id": found_series_id_for_target,
-                                        "category_name_log": category_from_api.get("name"), 
-                                        "series_name_log": series_in_category.get("name"), 
-                                    })
+                                    discovered_series_to_process.append(
+                                        {
+                                            "id": found_series_id_for_target,
+                                            "category_name_log": category_from_api.get(
+                                                "name"
+                                            ),
+                                            "series_name_log": series_in_category.get(
+                                                "name"
+                                            ),
+                                        }
+                                    )
                                 break
-                        if found_series_id_for_target: break
+                        if found_series_id_for_target:
+                            break
                 if not found_series_id_for_target:
-                    print(f"WARN: Could not find series_id for target: {target_pack['category_name']} - {target_pack['series_name']}")
-            
+                    print(
+                        f"WARN: Could not find series_id for target: {target_pack['category_name']} - {target_pack['series_name']}"
+                    )
+
             if not discovered_series_to_process:
-                print(f"[{datetime.now()}] No series IDs found for targeted packs in this cycle. Waiting 5 minutes...")
-                time.sleep(300) 
+                print(
+                    f"[{datetime.now()}] No series IDs found for targeted packs in this cycle. Waiting 5 minutes..."
+                )
+                time.sleep(300)
                 continue
 
             for series_info in discovered_series_to_process:
@@ -494,33 +612,50 @@ def run_tracker():
 
                 if detailed_pack_data and detailed_pack_data.get("id"):
                     authoritative_series_id = detailed_pack_data["id"]
-                    
+
                     # Store metadata and get pack category (e.g., "Diamond")
-                    pack_category_from_meta = store_metadata_and_sales_snapshot(db_conn, detailed_pack_data)
-                    
+                    pack_category_from_meta = store_metadata_and_sales_snapshot(
+                        db_conn, detailed_pack_data
+                    )
+
                     # Prepare list of all cards currently in the pack for various calculations
                     all_cards_current_snapshot_for_processing = []
-                    current_sum_of_all_card_values_cents = 0 
+                    current_sum_of_all_card_values_cents = 0
 
                     for tier_data in detailed_pack_data.get("slabPackTiers", []):
                         tier_name_for_card = tier_data.get("name", "Unknown Tier")
                         for card in tier_data.get("cards", []):
                             card_copy = card.copy()
-                            card_copy["tier_name"] = tier_name_for_card 
+                            card_copy["tier_name"] = tier_name_for_card
                             all_cards_current_snapshot_for_processing.append(card_copy)
-                            
+
                             val = card.get("estimatedValueCents", 0)
-                            current_sum_of_all_card_values_cents += val if isinstance(val, (int, float)) else 0
-                    
+                            current_sum_of_all_card_values_cents += (
+                                val if isinstance(val, (int, float)) else 0
+                            )
+
                     # Store the sum of all *available* cards' values (for historical pack value)
-                    store_pack_total_value_snapshot(db_conn, authoritative_series_id, current_sum_of_all_card_values_cents)
-                    
+                    store_pack_total_value_snapshot(
+                        db_conn,
+                        authoritative_series_id,
+                        current_sum_of_all_card_values_cents,
+                    )
+
                     # Calculate and store EV and ROI based on hit rates
-                    calculate_and_store_ev_roi(db_conn, authoritative_series_id, pack_category_from_meta, detailed_pack_data)
-                    
+                    calculate_and_store_ev_roi(
+                        db_conn,
+                        authoritative_series_id,
+                        pack_category_from_meta,
+                        detailed_pack_data,
+                    )
+
                     # Compute newly sold cards and update the pack_card_snapshots table
-                    sold_count = compute_and_store_sold_cards(db_conn, authoritative_series_id, all_cards_current_snapshot_for_processing)
-                    
+                    sold_count = compute_and_store_sold_cards(
+                        db_conn,
+                        authoritative_series_id,
+                        all_cards_current_snapshot_for_processing,
+                    )
+
                     print(
                         f"[{datetime.now()}] Processed: {detailed_pack_data.get('name', 'N/A')} (ID: {authoritative_series_id}) | "
                         f"Category: {pack_category_from_meta} | Sold this run: {sold_count} | "
@@ -528,10 +663,14 @@ def run_tracker():
                     )
 
                 else:
-                    print(f"[{datetime.now()}] No detailed data fetched for series ID {current_series_id_from_discovery}. Skipping.")
-                time.sleep(5) 
+                    print(
+                        f"[{datetime.now()}] No detailed data fetched for series ID {current_series_id_from_discovery}. Skipping."
+                    )
+                time.sleep(2)
 
-            print(f"[{datetime.now()}] Completed processing all targeted series for this iteration. Waiting 5 seconds before next cycle...")
+            print(
+                f"[{datetime.now()}] Completed processing all targeted series for this iteration. Waiting 5 seconds before next cycle..."
+            )
             time.sleep(5)
 
     except KeyboardInterrupt:
@@ -539,27 +678,36 @@ def run_tracker():
     except Exception as e:
         print(f"[{datetime.now()}] UNEXPECTED ERROR in run_tracker: {e}")
         import traceback
+
         traceback.print_exc()
         if db_conn:
             try:
                 db_conn.close()
-                print(f"[{datetime.now()}] DB connection closed due to error in run_tracker.")
+                print(
+                    f"[{datetime.now()}] DB connection closed due to error in run_tracker."
+                )
             except Exception as db_close_e:
-                print(f"[{datetime.now()}] Further error closing DB during exception handling: {db_close_e}")
-            db_conn = None 
+                print(
+                    f"[{datetime.now()}] Further error closing DB during exception handling: {db_close_e}"
+                )
+            db_conn = None
     finally:
         if db_conn:
             try:
                 db_conn.close()
-                print(f"[{datetime.now()}] Database connection closed normally at end of run_tracker or in finally.")
+                print(
+                    f"[{datetime.now()}] Database connection closed normally at end of run_tracker or in finally."
+                )
             except Exception as e:
-                print(f"[{datetime.now()}] Error closing database connection in finally block: {e}")
+                print(
+                    f"[{datetime.now()}] Error closing database connection in finally block: {e}"
+                )
 
 
 if __name__ == "__main__":
-    if not wait_for_postgres(): 
+    if not wait_for_postgres():
         print(f"[{datetime.now()}] Exiting tracker as Postgres is not available.")
-        exit(1) 
+        exit(1)
 
     temp_conn_for_schema = None
     try:
@@ -567,12 +715,16 @@ if __name__ == "__main__":
         if temp_conn_for_schema:
             run_schema_sql(temp_conn_for_schema)
         else:
-            print(f"[{datetime.now()}] Failed to get DB connection for schema setup. Exiting tracker.")
-            exit(1) 
-    except Exception as schema_err: 
-        print(f"[{datetime.now()}] Error during schema run: {schema_err}. Tracker will attempt to continue, but DB might not be correctly set up.")
+            print(
+                f"[{datetime.now()}] Failed to get DB connection for schema setup. Exiting tracker."
+            )
+            exit(1)
+    except Exception as schema_err:
+        print(
+            f"[{datetime.now()}] Error during schema run: {schema_err}. Tracker will attempt to continue, but DB might not be correctly set up."
+        )
     finally:
         if temp_conn_for_schema:
             temp_conn_for_schema.close()
-    
+
     run_tracker()

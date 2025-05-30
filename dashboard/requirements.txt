@@ -6,3 +6,4 @@ dash-bootstrap-components
 numpy
 python-dotenv
 ruff
+sqlalchemy

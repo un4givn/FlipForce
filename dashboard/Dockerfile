@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "flipforce_dashboard.py"]
+CMD ["python", "app.py"] # <-- Changed flipforce_dashboard.py to app.py

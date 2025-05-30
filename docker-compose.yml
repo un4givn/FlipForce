@@ -35,6 +35,7 @@ services:
     depends_on:
       - flipforce-db
     working_dir: /app
+    command: python app.py # <-- This line is added
 
 volumes:
   pgdata:
