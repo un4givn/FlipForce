@@ -11,6 +11,7 @@ from data_fetching import (
     fetch_historical_value_trend_data,
     fetch_pack_total_value_data,
     fetch_sold_cards_and_pack_metadata,
+    fetch_purchase_stats_since_special_hits, # New import
     get_dashboard_db_engine,
 )
 from ui_components import make_series_cards
@@ -41,6 +42,10 @@ def register_callbacks(app):
             )
             df_hist_val_trend_graph_data = fetch_historical_value_trend_data(db_engine)
             df_latest_ev_roi, df_hist_min_max_roi = fetch_ev_roi_data(db_engine)
+            
+            # Fetch new purchase stats
+            df_purchase_stats = fetch_purchase_stats_since_special_hits(db_engine)
+
 
             overall_tier_summary_content = html.P(
                 "No card tier data to display for overall summary."
@@ -137,6 +142,38 @@ def register_callbacks(app):
             else:
                 df_display_for_cards["min_historical_roi"] = np.nan
                 df_display_for_cards["max_historical_roi"] = np.nan
+
+            # Merge new purchase stats
+            if not df_purchase_stats.empty:
+                df_display_for_cards = pd.merge(
+                    df_display_for_cards,
+                    df_purchase_stats,
+                    on="series_id",
+                    how="left"
+                )
+            else: # Ensure columns exist even if fetch fails or returns empty
+                df_display_for_cards["last_grail_ts"] = pd.NaT
+                df_display_for_cards["count_since_grail"] = np.nan
+                df_display_for_cards["last_chase_ts"] = pd.NaT
+                df_display_for_cards["count_since_chase"] = np.nan
+
+            # Create display strings for purchase stats
+            def determine_display_val(row, count_col_name, ts_col_name, hit_type_str):
+                if pd.isna(row[ts_col_name]): # No hit of this type ever recorded
+                    return f"No {hit_type_str} Hit Yet"
+                else: # A hit was recorded
+                    # count_col_name might be NaN if merge failed to find a series, ensure it's int for display
+                    count_val = row[count_col_name]
+                    return str(int(count_val)) if pd.notna(count_val) else "0"
+
+
+            df_display_for_cards['purchases_since_grail_str'] = df_display_for_cards.apply(
+                determine_display_val, args=('count_since_grail', 'last_grail_ts', 'Grail'), axis=1
+            )
+            df_display_for_cards['purchases_since_chase_str'] = df_display_for_cards.apply(
+                determine_display_val, args=('count_since_chase', 'last_chase_ts', 'Chase'), axis=1
+            )
+
 
             if "pack_category" in df_display_for_cards.columns:
                 df_display_for_cards["pack_category_ordered"] = pd.Categorical(

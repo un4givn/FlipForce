@@ -11,7 +11,7 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
     """
     Generates a list of Dash Bootstrap Components (dbc) Cards for each series.
     base_series_df is expected to be pre-merged with latest total values,
-    EV/ROI, and historical min/max for these.
+    EV/ROI, historical min/max for these, and new purchase stats.
     all_sold_cards_df is the raw result from fetch_sold_cards_and_pack_metadata.
     """
     if base_series_df.empty:
@@ -123,6 +123,20 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             else "N/A"
         )
 
+        # Determine button color based on ROI
+        button_color = "info"  # Default color (aqua/light blue)
+        if pd.notna(current_roi_val) and not (isinstance(current_roi_val, float) and np.isinf(current_roi_val)):
+            if current_roi_val > 0:  # ROI > 0%
+                button_color = "success"  # Green
+            elif current_roi_val >= -0.03:  # ROI between 0% and -3% (inclusive)
+                button_color = "warning"  # Orange
+            else:  # ROI < -3%
+                button_color = "danger"   # Red
+
+        psg_display = row.get("purchases_since_grail_str", "N/A")
+        psc_display = row.get("purchases_since_chase_str", "N/A")
+
+
         full_display_name_card = (
             f"{pack_category_val} {pack_name_val}"
             if pack_category_val not in ["Unknown Category", None]
@@ -146,6 +160,12 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                     ),
                 ]
             ),
+            dbc.Row(
+                [
+                    dbc.Col(html.P(f"Sales Since Last Grail: {psg_display}"), width=6),
+                    dbc.Col(html.P(f"Sales Since Last Chase: {psc_display}"), width=6),
+                ]
+            ),
             html.H6("Card Tier Breakdown (Sold Hits)"),
             html.Ul(tier_summary_list_items),
             html.Hr(),
@@ -164,7 +184,7 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                 [
                     dbc.Col(
                         html.P(f"Current ROI (vs Static Cost): {current_roi_display}"),
-                        width=6,
+                        width=6, # Adjusted width to make space if needed, or keep as is
                     ),
                 ]
             ),
@@ -387,7 +407,7 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                             button_header_text,
                             id={"type": "series-toggle", "index": str(series_id)},
                             className="w-100 text-start",
-                            color="info",
+                            color=button_color,  # Apply conditional color here
                         )
                     ),
                     dbc.Collapse(

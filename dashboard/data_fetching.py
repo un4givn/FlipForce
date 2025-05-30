@@ -136,3 +136,45 @@ def fetch_ev_roi_data(db_engine):
     """
     min_max_roi_df = pd.read_sql(query_min_max_roi, db_engine)
     return latest_ev_roi_df, min_max_roi_df
+
+def fetch_purchase_stats_since_special_hits(db_engine):
+    """
+    Fetches statistics on card purchases since the last 'Grail' or 'Chase' tier card was sold for each series.
+    Returns a DataFrame with series_id, last_grail_ts, last_chase_ts, count_since_grail, count_since_chase.
+    Timestamps will be NaT if no such hit has occurred.
+    Counts will be the number of cards sold after the respective hit; 0 if a hit occurred but no sales after.
+    """
+    if not db_engine:
+        return pd.DataFrame()
+
+    query = """
+    WITH LastHitTimestamps AS (
+        SELECT
+            series_id,
+            MAX(CASE WHEN lower(tier) = 'grail' THEN sold_at ELSE NULL END) as last_grail_ts,
+            MAX(CASE WHEN lower(tier) = 'chase' THEN sold_at ELSE NULL END) as last_chase_ts
+        FROM sold_card_events
+        GROUP BY series_id
+    )
+    SELECT
+        psm.series_id,
+        lhts.last_grail_ts,
+        lhts.last_chase_ts,
+        (SELECT COUNT(sce.event_id)
+         FROM sold_card_events sce
+         WHERE sce.series_id = psm.series_id AND lhts.last_grail_ts IS NOT NULL AND sce.sold_at > lhts.last_grail_ts
+        ) as count_since_grail,
+        (SELECT COUNT(sce.event_id)
+         FROM sold_card_events sce
+         WHERE sce.series_id = psm.series_id AND lhts.last_chase_ts IS NOT NULL AND sce.sold_at > lhts.last_chase_ts
+        ) as count_since_chase
+    FROM pack_series_metadata psm
+    LEFT JOIN LastHitTimestamps lhts ON psm.series_id = lhts.series_id;
+    """
+    df = pd.read_sql(query, db_engine)
+    if not df.empty:
+        if "last_grail_ts" in df.columns:
+            df["last_grail_ts"] = pd.to_datetime(df["last_grail_ts"], errors='coerce')
+        if "last_chase_ts" in df.columns:
+            df["last_chase_ts"] = pd.to_datetime(df["last_chase_ts"], errors='coerce')
+    return df
