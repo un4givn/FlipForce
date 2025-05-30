@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 88 # Or your preferred line length
+target-version = "py39" # Assuming Python 3.9 from your Dockerfiles
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # Pyflakes
+    "W",  # pycodestyle warnings
+    "I",  # isort
+    # Add more rule codes as desired, e.g., "B" for flake8-bugbear
+]
+ignore = [] # Add any specific rules to ignore
+
+[tool.ruff.format]
+quote-style = "double" # Or "single"
