@@ -7,28 +7,25 @@ from dotenv import load_dotenv
 # Load environment variables first
 load_dotenv()
 
-# It's good practice to have all imports at the top,
-# but dotenv.load_dotenv() needs to be called before other modules
-# that might depend on those environment variables are imported.
-# So, we'll keep the order as is, but ruff might still flag it if it's strict.
-# If ruff continues to complain about E402 for the imports below,
-# you might consider if `load_dotenv()` can be called even earlier,
-# or if there's a way to configure ruff to ignore this specific case.
-
+# Import other modules after dotenv.load_dotenv()
 from callbacks import register_callbacks  # noqa: E402
-from config import DB_CONFIG  # noqa: E402; For initial check
+from config import DB_CONFIG, COLORS  # noqa: E402; For initial check and theme
 from data_fetching import get_dashboard_db_engine  # noqa: E402; For startup test
 from main_layout import create_layout  # noqa: E402
 
+# Initialize the Dash app with a dark theme from Dash Bootstrap Components
+# CYBORG is a good dark theme. LUX, DARKLY, SLATE are other options.
 app = dash.Dash(
     __name__,
-    external_stylesheets=[dbc.themes.BOOTSTRAP],
-    # Necessary if callbacks are in other files or layout is dynamic
+    external_stylesheets=[dbc.themes.CYBORG],  # Apply the CYBORG dark theme
     suppress_callback_exceptions=True,
+    meta_tags=[ # For responsiveness
+        {"name": "viewport", "content": "width=device-width, initial-scale=1"}
+    ]
 )
 server = app.server
 
-app.title = "FlipForce Dashboard"  # Optional: Set a browser tab title
+app.title = "FlipForce Dashboard"
 app.layout = create_layout()
 register_callbacks(app)
 
@@ -52,7 +49,6 @@ if __name__ == "__main__":
             f"{DB_CONFIG['dbname']} (User: {DB_CONFIG['user']})"
         )
         print(f"Dashboard starting with DB config: {db_info}")
-        # Optional: Test DB connection on startup
         test_engine = None
         try:
             test_engine = get_dashboard_db_engine()
@@ -60,9 +56,6 @@ if __name__ == "__main__":
                 print("Successfully created a test database engine.")
             else:
                 print("Failed to create a test database engine. Check logs for errors.")
-                # Consider exiting if this is critical:
-                # import sys
-                # sys.exit(1)
         except Exception as e:
             print(f"Error creating test database engine during startup: {e}")
         finally:
