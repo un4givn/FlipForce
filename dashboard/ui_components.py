@@ -3,17 +3,11 @@ import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from config import STATIC_PACK_COSTS_CENTS  # Import from config.py
+from config import STATIC_PACK_COSTS_CENTS
 from dash import dcc, html
 
 
-def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_cards_df):
-    """
-    Generates a list of Dash Bootstrap Components (dbc) Cards for each series.
-    base_series_df is expected to be pre-merged with latest total values,
-    EV/ROI, historical min/max for these, and new purchase stats.
-    all_sold_cards_df is the raw result from fetch_sold_cards_and_pack_metadata.
-    """
+def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_cards_df, all_current_cards_df):
     if base_series_df.empty:
         return html.Div(
             "No series data available to generate cards.", className="text-info"
@@ -38,6 +32,12 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                 & (all_sold_cards_df["event_id"].notna())
             ]
             if not all_sold_cards_df.empty
+            else pd.DataFrame()
+        )
+        
+        series_specific_current_cards = (
+            all_current_cards_df[all_current_cards_df["series_id"] == series_id]
+            if not all_current_cards_df.empty
             else pd.DataFrame()
         )
 
@@ -90,63 +90,107 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             if pd.notna(max_hist_total_val_cents)
             else "N/A"
         )
+        
+        cards_over_pack_price_count_val = row.get('cards_over_pack_price_count', 0)
 
-        static_cost_val = STATIC_PACK_COSTS_CENTS.get(pack_category_val)
+        # Standard ROI/EV
+        static_cost_val = row.get("static_pack_cost_cents")
         static_cost_display = (
-            f"${static_cost_val / 100:.2f}" if static_cost_val is not None else "N/A"
+            f"${static_cost_val / 100:.2f}" if pd.notna(static_cost_val) else "N/A"
         )
-
         current_ev_cents = row.get("expected_value_cents")
         current_roi_val = row.get("roi")
         current_ev_display = (
             f"${current_ev_cents / 100:.2f}" if pd.notna(current_ev_cents) else "N/A"
         )
-        current_roi_display = (
+        current_roi_display_str = (
             f"{current_roi_val:.2%}"
-            if pd.notna(current_roi_val)
-            and not (isinstance(current_roi_val, float) and np.isinf(current_roi_val))
+            if pd.notna(current_roi_val) and not (isinstance(current_roi_val, float) and np.isinf(current_roi_val))
             else "N/A"
         )
-
         min_hist_roi_val = row.get("min_historical_roi", np.nan)
         max_hist_roi_val = row.get("max_historical_roi", np.nan)
         min_hist_roi_display = (
             f"{min_hist_roi_val:.2%}"
-            if pd.notna(min_hist_roi_val)
-            and not (isinstance(min_hist_roi_val, float) and np.isinf(min_hist_roi_val))
+            if pd.notna(min_hist_roi_val) and not (isinstance(min_hist_roi_val, float) and np.isinf(min_hist_roi_val))
             else "N/A"
         )
         max_hist_roi_display = (
             f"{max_hist_roi_val:.2%}"
-            if pd.notna(max_hist_roi_val)
-            and not (isinstance(max_hist_roi_val, float) and np.isinf(max_hist_roi_val))
+            if pd.notna(max_hist_roi_val) and not (isinstance(max_hist_roi_val, float) and np.isinf(max_hist_roi_val))
             else "N/A"
         )
 
-        # Determine button color based on ROI
-        button_color = "info"  # Default color (aqua/light blue)
-        if pd.notna(current_roi_val) and not (isinstance(current_roi_val, float) and np.isinf(current_roi_val)):
-            if current_roi_val > 0:  # ROI > 0%
-                button_color = "success"  # Green
-            elif current_roi_val >= -0.03:  # ROI between 0% and -3% (inclusive)
-                button_color = "warning"  # Orange
-            else:  # ROI < -3%
-                button_color = "danger"   # Red
+        # ROIBB / EVBB
+        pack_cost_bb_cents_val = row.get("pack_cost_bb_cents")
+        pack_cost_bb_display = (
+            f"${pack_cost_bb_cents_val / 100:.2f}" if pd.notna(pack_cost_bb_cents_val) else "N/A"
+        )
+        current_ev_bb_cents_val = row.get("expected_value_bb_cents")
+        current_ev_bb_display = (
+            f"${current_ev_bb_cents_val / 100:.2f}" if pd.notna(current_ev_bb_cents_val) else "N/A"
+        )
+        current_roibb_val = row.get("roi_bb")
+        current_roibb_display_str = (
+            f"{current_roibb_val:.2%}"
+            if pd.notna(current_roibb_val) and not (isinstance(current_roibb_val, float) and np.isinf(current_roibb_val))
+            else "N/A"
+        )
+        min_hist_roibb_val = row.get("min_historical_roi_bb", np.nan)
+        max_hist_roibb_val = row.get("max_historical_roi_bb", np.nan)
+        min_hist_roibb_display = (
+            f"{min_hist_roibb_val:.2%}"
+            if pd.notna(min_hist_roibb_val) and not (isinstance(min_hist_roibb_val, float) and np.isinf(min_hist_roibb_val))
+            else "N/A"
+        )
+        max_hist_roibb_display = (
+            f"{max_hist_roibb_val:.2%}"
+            if pd.notna(max_hist_roibb_val) and not (isinstance(max_hist_roibb_val, float) and np.isinf(max_hist_roibb_val))
+            else "N/A"
+        )
 
         psg_display = row.get("purchases_since_grail_str", "N/A")
         psc_display = row.get("purchases_since_chase_str", "N/A")
-
 
         full_display_name_card = (
             f"{pack_category_val} {pack_name_val}"
             if pack_category_val not in ["Unknown Category", None]
             else pack_name_val
         )
-        button_header_text = (
-            f"{full_display_name_card} — ROI: {current_roi_display} "
-            f"— EV: {current_ev_display}"
-        )
 
+        # Determine ROI text color and component
+        if current_roi_display_str != "N/A" and pd.notna(current_roi_val) and not (isinstance(current_roi_val, float) and np.isinf(current_roi_val)):
+            if current_roi_val > 0:
+                roi_color_class = "text-success fw-bold"  # Green and Bold
+            elif current_roi_val >= -0.03:
+                roi_color_class = "text-warning fw-bold"  # Orange and Bold
+            else:
+                roi_color_class = "text-danger fw-bold"   # Red and Bold
+            colored_roi_text_component = html.Span(current_roi_display_str, className=roi_color_class)
+        else:
+            colored_roi_text_component = html.Span(current_roi_display_str, className="fw-bold")
+
+        # Determine ROIBB text color and component
+        if current_roibb_display_str != "N/A" and pd.notna(current_roibb_val) and not (isinstance(current_roibb_val, float) and np.isinf(current_roibb_val)):
+            if current_roibb_val > 0:
+                roibb_color_class = "text-success fw-bold"  # Green and Bold
+            elif current_roibb_val >= -0.03:
+                roibb_color_class = "text-warning fw-bold"  # Orange and Bold
+            else:
+                roibb_color_class = "text-danger fw-bold"   # Red and Bold
+            colored_roibb_text_component = html.Span(current_roibb_display_str, className=roibb_color_class)
+        else:
+            colored_roibb_text_component = html.Span(current_roibb_display_str, className="fw-bold")
+
+
+        button_header_children = [
+            html.Span(f"{full_display_name_card} — ROI: "),
+            colored_roi_text_component,
+            html.Span(" (ROIBB: "),
+            colored_roibb_text_component,
+            html.Span(f") — EV: {current_ev_display} — COPP: {cards_over_pack_price_count_val}")
+        ]
+        
         card_body_items = [
             html.H6("Sales Summary", className="mt-2"),
             dbc.Row(
@@ -169,32 +213,68 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             html.H6("Card Tier Breakdown (Sold Hits)"),
             html.Ul(tier_summary_list_items),
             html.Hr(),
-            html.H6("Pack Valuation Metrics"),
+            html.H6("Pack Valuation Metrics (Standard)"),
             dbc.Row(
                 [
                     dbc.Col(
-                        html.P(f"Static Pack Cost: {static_cost_display}"), width=6
+                        html.P(f"Standard Pack Cost: {static_cost_display}"), width=6
                     ),
                     dbc.Col(
-                        html.P(f"Current EV (per pack): {current_ev_display}"), width=6
+                        html.P(f"Standard EV (per pack): {current_ev_display}"), width=6
                     ),
                 ]
             ),
             dbc.Row(
                 [
                     dbc.Col(
-                        html.P(f"Current ROI (vs Static Cost): {current_roi_display}"),
-                        width=6, # Adjusted width to make space if needed, or keep as is
+                        html.P([
+                            html.Span("Standard ROI: "),
+                            colored_roi_text_component 
+                        ]),
+                        width=6, 
                     ),
                 ]
             ),
             dbc.Row(
                 [
                     dbc.Col(
-                        html.P(f"Historical Min ROI: {min_hist_roi_display}"), width=6
+                        html.P(f"Hist. Min ROI: {min_hist_roi_display}"), width=6
                     ),
                     dbc.Col(
-                        html.P(f"Historical Max ROI: {max_hist_roi_display}"), width=6
+                        html.P(f"Hist. Max ROI: {max_hist_roi_display}"), width=6
+                    ),
+                ]
+            ),
+            html.Hr(),
+            html.H6("Pack Valuation Metrics (With Buyback Floor)"),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        html.P(f"Buyback Pack Cost (Cost +10%): {pack_cost_bb_display}"), width=6
+                    ),
+                    dbc.Col(
+                        html.P(f"Buyback EV (Floor 80%): {current_ev_bb_display}"), width=6
+                    ),
+                ]
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        html.P([
+                            html.Span("ROIBB (ROI with Buyback): "),
+                            colored_roibb_text_component # Use the colored component here too
+                        ]),
+                        width=6, 
+                    ),
+                ]
+            ),
+            dbc.Row(
+                [
+                     dbc.Col(
+                        html.P(f"Hist. Min ROIBB: {min_hist_roibb_display}"), width=6
+                    ),
+                    dbc.Col(
+                        html.P(f"Hist. Max ROIBB: {max_hist_roibb_display}"), width=6
                     ),
                 ]
             ),
@@ -207,7 +287,13 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                             "Current Total Available Value: "
                             f"{curr_total_avail_val_display}"
                         ),
-                        width=12,
+                        width=6,
+                    ),
+                     dbc.Col(
+                        html.P(
+                            f"Cards > Pack Price: {cards_over_pack_price_count_val}"
+                        ),
+                        width=6,
                     ),
                 ]
             ),
@@ -231,121 +317,172 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             ),
         ]
 
-        if total_sold_for_this_series > 0:
-            sold_cards_display_list_ui = []
-            display_cols_for_sold_cards = [
-                "player_name",
-                "card_tier",
-                "overall",
-                "insert_name",
-                "sold_card_value_cents",
-                "sold_at",
-                "front_image",
+        current_cards_display_list_ui = []
+        if not series_specific_current_cards.empty:
+            top_current_cards = series_specific_current_cards.sort_values(
+                by="estimated_value_cents", ascending=False
+            ).head(10)
+            display_cols_for_current_cards = [
+                "player_name", "tier", "overall", "insert_name", 
+                "estimated_value_cents", "front_image",
             ]
-            for _, card_event_row in series_specific_sold_events.head(10).iterrows():
-                item_details_children = []
-                card_identifier = card_event_row.get("player_name", "")
-                if pd.isna(card_identifier) or str(card_identifier).strip() == "":
-                    card_identifier = card_event_row.get(
-                        "insert_name",
-                        f"Card ID: {card_event_row.get('card_id', 'Unknown')}",
+            for _, card_row_curr in top_current_cards.iterrows():
+                item_details_children_curr = []
+                card_identifier_curr = card_row_curr.get("player_name", "")
+                if pd.isna(card_identifier_curr) or str(card_identifier_curr).strip() == "":
+                    card_identifier_curr = card_row_curr.get(
+                        "insert_name", f"Card ID: {card_row_curr.get('card_id', 'Unknown')}"
                     )
                 else:
-                    insert_name_val = card_event_row.get("insert_name")
-                    if pd.notna(insert_name_val) and str(insert_name_val).strip() != "":
-                        card_identifier += f" - {insert_name_val}"
-
-                item_details_children.append(html.Strong(card_identifier))
-                list_items_for_card_display = []
-                for col_sold in display_cols_for_sold_cards:
-                    if col_sold in card_event_row:
-                        value = card_event_row[col_sold]
-                        col_display_name_sold = col_sold.replace("_", " ").title()
-                        if pd.isna(value) or (
-                            isinstance(value, str) and value.strip() == ""
-                        ):
-                            value_display = html.Em("N/A")
-                        elif col_sold == "sold_at":
-                            value_display = (
-                                pd.to_datetime(value).strftime("%Y-%m-%d %H:%M")
-                                if pd.notna(value)
-                                else html.Em("N/A")
+                    insert_name_val_curr = card_row_curr.get("insert_name")
+                    if pd.notna(insert_name_val_curr) and str(insert_name_val_curr).strip() != "":
+                        card_identifier_curr += f" - {insert_name_val_curr}"
+                
+                item_details_children_curr.append(html.Strong(card_identifier_curr))
+                list_items_for_card_display_curr = []
+                for col_current in display_cols_for_current_cards:
+                    if col_current in card_row_curr:
+                        value_curr = card_row_curr[col_current]
+                        col_display_name_current = col_current.replace("_", " ").title()
+                        if pd.isna(value_curr) or (isinstance(value_curr, str) and value_curr.strip() == ""):
+                            value_display_curr = html.Em("N/A")
+                        elif col_current == "estimated_value_cents":
+                            value_display_curr = (
+                                f"${value_curr / 100:.2f}" if pd.notna(value_curr) else html.Em("N/A")
                             )
-                        elif col_sold == "sold_card_value_cents":
-                            value_display = (
-                                f"${value / 100:.2f}"
-                                if pd.notna(value)
-                                else html.Em("N/A")
-                            )
-                        elif col_sold == "overall" and pd.notna(value):
-                            value_display = f"{int(value)}"
+                        elif col_current == "overall" and pd.notna(value_curr):
+                             value_display_curr = f"{int(value_curr)}"
                         elif (
-                            col_sold == "front_image"
-                            and pd.notna(value)
-                            and "http" in str(value).lower()
+                            col_current == "front_image"
+                            and pd.notna(value_curr)
+                            and "http" in str(value_curr).lower()
                         ):
-                            value_display = html.A(
-                                "Image",
-                                href=str(value),
-                                target="_blank",
-                                style={"fontSize": "0.8em"},
+                            value_display_curr = html.A(
+                                "Image", href=str(value_curr), target="_blank", style={"fontSize": "0.8em"},
                             )
                         else:
-                            value_display = str(value)
-                        list_items_for_card_display.append(
+                            value_display_curr = str(value_curr)
+                        list_items_for_card_display_curr.append(
                             html.Li(
                                 [
-                                    html.Span(
-                                        f"{col_display_name_sold}: ",
-                                        style={"fontWeight": "500"},
-                                    ),
-                                    value_display,
+                                    html.Span(f"{col_display_name_current}: ", style={"fontWeight": "500"}),
+                                    value_display_curr,
                                 ],
                                 style={"lineHeight": "1.4", "fontSize": "0.85rem"},
                             )
                         )
-                item_details_children.append(
+                item_details_children_curr.append(
                     html.Ul(
-                        list_items_for_card_display,
+                        list_items_for_card_display_curr,
                         style={
-                            "fontSize": "0.8rem",
-                            "paddingLeft": "15px",
-                            "listStyleType": "disc",
-                            "marginBottom": "3px",
+                            "fontSize": "0.8rem", "paddingLeft": "15px", 
+                            "listStyleType": "disc", "marginBottom": "3px",
+                        },
+                    )
+                )
+                current_cards_display_list_ui.append(
+                    dbc.ListGroupItem(item_details_children_curr, style={"padding": "0.5rem 0.7rem"})
+                )
+            
+            current_cards_scrolling_div_content = dbc.ListGroup(current_cards_display_list_ui, flush=True)
+            card_body_items.extend([
+                html.Hr(style={"marginTop": "1rem", "marginBottom": "1rem"}),
+                html.H6("Currently Available Cards (Top 10 by Value)", style={"marginTop": "0.5rem", "marginBottom": "0.5rem"}),
+                html.Div(
+                    current_cards_scrolling_div_content,
+                    style={
+                        "maxHeight": "300px", "overflowY": "auto", "border": "1px solid #eee",
+                        "padding": "0px", "marginTop": "10px",
+                    },
+                ),
+            ])
+        else:
+            card_body_items.extend([
+                html.Hr(style={"marginTop": "1rem", "marginBottom": "1rem"}),
+                html.P(html.Em("No currently available cards data for this series."))
+            ])
+
+        if total_sold_for_this_series > 0:
+            sold_cards_display_list_ui = []
+            display_cols_for_sold_cards = [
+                "player_name", "card_tier", "overall", "insert_name",
+                "sold_card_value_cents", "sold_at", "front_image",
+            ]
+            for _, card_event_row in series_specific_sold_events.head(10).iterrows():
+                item_details_children_sold = []
+                card_identifier_sold = card_event_row.get("player_name", "")
+                if pd.isna(card_identifier_sold) or str(card_identifier_sold).strip() == "":
+                    card_identifier_sold = card_event_row.get(
+                        "insert_name", f"Card ID: {card_event_row.get('card_id', 'Unknown')}",
+                    )
+                else:
+                    insert_name_val_sold = card_event_row.get("insert_name")
+                    if pd.notna(insert_name_val_sold) and str(insert_name_val_sold).strip() != "":
+                        card_identifier_sold += f" - {insert_name_val_sold}"
+
+                item_details_children_sold.append(html.Strong(card_identifier_sold))
+                list_items_for_card_display_sold = []
+                for col_sold in display_cols_for_sold_cards:
+                    if col_sold in card_event_row:
+                        value_sold = card_event_row[col_sold]
+                        col_display_name_sold = col_sold.replace("_", " ").title()
+                        if pd.isna(value_sold) or (isinstance(value_sold, str) and value_sold.strip() == ""):
+                            value_display_sold = html.Em("N/A")
+                        elif col_sold == "sold_at":
+                            value_display_sold = (
+                                pd.to_datetime(value_sold).strftime("%Y-%m-%d %H:%M")
+                                if pd.notna(value_sold) else html.Em("N/A")
+                            )
+                        elif col_sold == "sold_card_value_cents":
+                            value_display_sold = (
+                                f"${value_sold / 100:.2f}" if pd.notna(value_sold) else html.Em("N/A")
+                            )
+                        elif col_sold == "overall" and pd.notna(value_sold):
+                            value_display_sold = f"{int(value_sold)}"
+                        elif (col_sold == "front_image" and pd.notna(value_sold) and "http" in str(value_sold).lower()):
+                            value_display_sold = html.A(
+                                "Image", href=str(value_sold), target="_blank", style={"fontSize": "0.8em"},
+                            )
+                        else:
+                            value_display_sold = str(value_sold)
+                        list_items_for_card_display_sold.append(
+                            html.Li(
+                                [
+                                    html.Span(f"{col_display_name_sold}: ", style={"fontWeight": "500"}),
+                                    value_display_sold,
+                                ],
+                                style={"lineHeight": "1.4", "fontSize": "0.85rem"},
+                            )
+                        )
+                item_details_children_sold.append(
+                    html.Ul(
+                        list_items_for_card_display_sold,
+                        style={
+                            "fontSize": "0.8rem", "paddingLeft": "15px",
+                            "listStyleType": "disc", "marginBottom": "3px",
                         },
                     )
                 )
                 sold_cards_display_list_ui.append(
-                    dbc.ListGroupItem(
-                        item_details_children, style={"padding": "0.5rem 0.7rem"}
-                    )
+                    dbc.ListGroupItem(item_details_children_sold, style={"padding": "0.5rem 0.7rem"})
                 )
+            
+            sold_cards_scrolling_div_content = dbc.ListGroup(sold_cards_display_list_ui, flush=True)
+            card_body_items.extend([
+                html.Hr(style={"marginTop": "1rem", "marginBottom": "1rem"}),
+                html.H6("Recently Sold Card Details (Max 10 shown)", style={"marginTop": "0.5rem", "marginBottom": "0.5rem"}),
+                html.Div(
+                    sold_cards_scrolling_div_content,
+                    style={
+                        "maxHeight": "300px", "overflowY": "auto", "border": "1px solid #eee",
+                        "padding": "0px", "marginTop": "10px",
+                    },
+                ),
+            ])
 
-            sold_cards_scrolling_div_content = dbc.ListGroup(
-                sold_cards_display_list_ui, flush=True
-            )
-            card_body_items.extend(
-                [
-                    html.Hr(style={"marginTop": "1rem", "marginBottom": "1rem"}),
-                    html.H6(
-                        "Recently Sold Card Details (Max 10 shown)",
-                        style={"marginTop": "0.5rem", "marginBottom": "0.5rem"},
-                    ),
-                    html.Div(
-                        sold_cards_scrolling_div_content,
-                        style={
-                            "maxHeight": "300px",
-                            "overflowY": "auto",
-                            "border": "1px solid #eee",
-                            "padding": "0px",
-                            "marginTop": "10px",
-                        },
-                    ),
-                ]
-            )
         else:
             card_body_items.extend(
-                [html.Hr(), html.P(html.Em("No sales recorded for this series yet."))]
+                [html.Hr(style={"marginTop": "1rem", "marginBottom": "1rem"}), html.P(html.Em("No sales recorded for this series yet."))]
             )
 
         graph_figure_component = html.Em("Not enough data to plot pack value trend.")
@@ -356,37 +493,21 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
             series_hist_val_for_graph = hist_val_trend_data_for_graph[
                 hist_val_trend_data_for_graph["series_id"] == series_id
             ].copy()
-            if (
-                not series_hist_val_for_graph.empty
-                and len(series_hist_val_for_graph) > 1
-            ):
+            if (not series_hist_val_for_graph.empty and len(series_hist_val_for_graph) > 1):
                 series_hist_val_for_graph["total_pack_value_dollars"] = (
                     series_hist_val_for_graph["total_estimated_value_cents"] / 100.0
                 )
                 fig = px.line(
-                    series_hist_val_for_graph,
-                    x="snapshot_time",
-                    y="total_pack_value_dollars",
-                    labels={
-                        "snapshot_time": "Date",
-                        "total_pack_value_dollars": "Total Value ($)",
-                    },
+                    series_hist_val_for_graph, x="snapshot_time", y="total_pack_value_dollars",
+                    labels={"snapshot_time": "Date", "total_pack_value_dollars": "Total Value ($)"},
                 )
                 fig.update_layout(
-                    margin=dict(l=10, r=10, t=30, b=10),
-                    height=200,
-                    yaxis_title="Value ($)",
-                    xaxis_title=None,
-                    showlegend=False,
-                    font=dict(size=10),
+                    margin=dict(l=10, r=10, t=30, b=10), height=200,
+                    yaxis_title="Value ($)", xaxis_title=None, showlegend=False, font=dict(size=10),
                 )
-                graph_figure_component = dcc.Graph(
-                    figure=fig, config={"displayModeBar": False}
-                )
+                graph_figure_component = dcc.Graph(figure=fig, config={"displayModeBar": False})
             elif not series_hist_val_for_graph.empty:
-                graph_figure_component = html.Em(
-                    "Only one data point for total pack value trend."
-                )
+                graph_figure_component = html.Em("Only one data point for total pack value trend.")
 
         card_body_items.extend(
             [
@@ -404,10 +525,10 @@ def make_series_cards(base_series_df, hist_val_trend_data_for_graph, all_sold_ca
                 [
                     dbc.CardHeader(
                         dbc.Button(
-                            button_header_text,
+                            button_header_children,
                             id={"type": "series-toggle", "index": str(series_id)},
                             className="w-100 text-start",
-                            color=button_color,  # Apply conditional color here
+                            color="light", 
                         )
                     ),
                     dbc.Collapse(

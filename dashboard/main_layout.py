@@ -8,7 +8,7 @@ def create_layout():
     return dbc.Container(
         [
             dcc.Interval(
-                id="data-refresh-interval", interval=5 * 60 * 1000, n_intervals=0
+                id="data-refresh-interval", interval=5 * 60 * 200, n_intervals=0
             ),  # 5 minutes
             html.H2(
                 "📦 FlipForce Dashboard - ROI Enhanced", className="my-4 text-center"

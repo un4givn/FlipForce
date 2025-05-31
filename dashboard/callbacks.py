@@ -1,5 +1,5 @@
 # dashboard/callbacks.py
-import traceback  # For detailed error logging
+import traceback 
 
 import dash
 import numpy as np
@@ -7,11 +7,13 @@ import pandas as pd
 from config import PACK_CATEGORY_ORDER
 from dash import Input, Output, State, callback_context, html
 from data_fetching import (
+    fetch_current_cards_in_pack, 
     fetch_ev_roi_data,
+    fetch_high_value_card_counts, 
     fetch_historical_value_trend_data,
     fetch_pack_total_value_data,
+    fetch_purchase_stats_since_special_hits,
     fetch_sold_cards_and_pack_metadata,
-    fetch_purchase_stats_since_special_hits, # New import
     get_dashboard_db_engine,
 )
 from ui_components import make_series_cards
@@ -41,10 +43,10 @@ def register_callbacks(app):
                 fetch_pack_total_value_data(db_engine)
             )
             df_hist_val_trend_graph_data = fetch_historical_value_trend_data(db_engine)
-            df_latest_ev_roi, df_hist_min_max_roi = fetch_ev_roi_data(db_engine)
-            
-            # Fetch new purchase stats
+            df_latest_ev_roi, df_hist_min_max_roi = fetch_ev_roi_data(db_engine) # This will now include ROIBB data
             df_purchase_stats = fetch_purchase_stats_since_special_hits(db_engine)
+            df_current_cards = fetch_current_cards_in_pack(db_engine) 
+            df_high_value_counts = fetch_high_value_card_counts(db_engine) 
 
 
             overall_tier_summary_content = html.P(
@@ -123,14 +125,20 @@ def register_callbacks(app):
                 df_display_for_cards["min_historical_total_value_cents"] = np.nan
                 df_display_for_cards["max_historical_total_value_cents"] = np.nan
 
+            # df_latest_ev_roi now contains roi_bb, expected_value_bb_cents, pack_cost_bb_cents
+            # df_hist_min_max_roi now contains min_historical_roi_bb, max_historical_roi_bb
             if not df_latest_ev_roi.empty:
                 df_display_for_cards = pd.merge(
                     df_display_for_cards, df_latest_ev_roi, on="series_id", how="left"
                 )
-            else:
+            else: # Ensure all columns exist even if merge fails
                 df_display_for_cards["expected_value_cents"] = np.nan
                 df_display_for_cards["static_pack_cost_cents"] = np.nan
                 df_display_for_cards["roi"] = np.nan
+                df_display_for_cards["expected_value_bb_cents"] = np.nan
+                df_display_for_cards["pack_cost_bb_cents"] = np.nan
+                df_display_for_cards["roi_bb"] = np.nan
+
 
             if not df_hist_min_max_roi.empty:
                 df_display_for_cards = pd.merge(
@@ -139,11 +147,13 @@ def register_callbacks(app):
                     on="series_id",
                     how="left",
                 )
-            else:
+            else: # Ensure all columns exist
                 df_display_for_cards["min_historical_roi"] = np.nan
                 df_display_for_cards["max_historical_roi"] = np.nan
+                df_display_for_cards["min_historical_roi_bb"] = np.nan
+                df_display_for_cards["max_historical_roi_bb"] = np.nan
 
-            # Merge new purchase stats
+
             if not df_purchase_stats.empty:
                 df_display_for_cards = pd.merge(
                     df_display_for_cards,
@@ -151,18 +161,31 @@ def register_callbacks(app):
                     on="series_id",
                     how="left"
                 )
-            else: # Ensure columns exist even if fetch fails or returns empty
+            else: 
                 df_display_for_cards["last_grail_ts"] = pd.NaT
                 df_display_for_cards["count_since_grail"] = np.nan
                 df_display_for_cards["last_chase_ts"] = pd.NaT
                 df_display_for_cards["count_since_chase"] = np.nan
+            
+            if not df_high_value_counts.empty:
+                df_display_for_cards = pd.merge(
+                    df_display_for_cards,
+                    df_high_value_counts, 
+                    on="series_id",
+                    how="left"
+                )
+                if "cards_over_pack_price_count" in df_display_for_cards.columns:
+                    df_display_for_cards["cards_over_pack_price_count"] = df_display_for_cards["cards_over_pack_price_count"].fillna(0).astype(int)
+                else: 
+                     df_display_for_cards["cards_over_pack_price_count"] = 0
+            else:
+                df_display_for_cards["cards_over_pack_price_count"] = 0
 
-            # Create display strings for purchase stats
+
             def determine_display_val(row, count_col_name, ts_col_name, hit_type_str):
-                if pd.isna(row[ts_col_name]): # No hit of this type ever recorded
+                if pd.isna(row[ts_col_name]): 
                     return f"No {hit_type_str} Hit Yet"
-                else: # A hit was recorded
-                    # count_col_name might be NaN if merge failed to find a series, ensure it's int for display
+                else: 
                     count_val = row[count_col_name]
                     return str(int(count_val)) if pd.notna(count_val) else "0"
 
@@ -192,6 +215,7 @@ def register_callbacks(app):
                 df_display_for_cards,
                 df_hist_val_trend_graph_data,
                 df_sold_cards_and_meta,
+                df_current_cards 
             )
 
             return overall_tier_summary_content, series_cards_ui

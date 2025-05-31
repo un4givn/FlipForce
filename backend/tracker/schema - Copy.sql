@@ -1,9 +1,25 @@
+-- Flipforce/backend/tracker/schema.sql
+
+-- Drop existing tables to ensure a clean slate with the new structure.
+-- WARNING: This will delete all existing data in these tables.
+DROP TABLE IF EXISTS pack_tier_ev_contribution_snapshots CASCADE;
+DROP TABLE IF EXISTS pack_ev_roi_snapshots CASCADE;
+DROP TABLE IF EXISTS pack_sales_tracker CASCADE;
+DROP TABLE IF EXISTS pack_total_value_snapshots CASCADE;
+DROP TABLE IF EXISTS suspected_swapped_cards CASCADE; -- If you added this
+DROP TABLE IF EXISTS series_processing_state CASCADE; -- If you added this
+DROP TABLE IF EXISTS sold_card_events CASCADE;
+DROP TABLE IF EXISTS pack_card_snapshots CASCADE;
+DROP TABLE IF EXISTS pack_max_sold CASCADE;
+DROP TABLE IF EXISTS pack_snapshots CASCADE;
+DROP TABLE IF EXISTS pack_series_metadata CASCADE;
+
 -- Recreate tables with the latest structure
 CREATE TABLE IF NOT EXISTS pack_series_metadata (
     series_id UUID PRIMARY KEY,
     name TEXT,
     tier TEXT, 
-    cost_cents INTEGER, -- This is the original pack cost
+    cost_cents INTEGER,
     status TEXT,
     last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -43,7 +59,7 @@ CREATE TABLE IF NOT EXISTS pack_card_snapshots (
     slab_kind TEXT,
     grading_company TEXT,
     estimated_value_cents INTEGER,
-    snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(), -- This column is crucial
     PRIMARY KEY (series_id, card_id),
     FOREIGN KEY (series_id) REFERENCES pack_series_metadata(series_id) ON DELETE CASCADE
 );
@@ -103,13 +119,10 @@ CREATE TABLE IF NOT EXISTS pack_ev_roi_snapshots (
     snapshot_id SERIAL PRIMARY KEY,
     series_id UUID NOT NULL,
     expected_value_cents BIGINT,
-    static_pack_cost_cents INTEGER, -- Original pack cost
+    static_pack_cost_cents INTEGER,
     roi REAL,
     num_premium_cards_per_pack INTEGER,
     num_non_premium_cards_per_pack INTEGER,
-    expected_value_bb_cents BIGINT, -- EV for Buyback
-    pack_cost_bb_cents INTEGER,     -- Pack cost for Buyback (original + 10%)
-    roi_bb REAL,                    -- ROI for Buyback
     snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     FOREIGN KEY (series_id) REFERENCES pack_series_metadata(series_id) ON DELETE CASCADE,
     UNIQUE (series_id, snapshot_time)
@@ -128,7 +141,7 @@ CREATE TABLE IF NOT EXISTS pack_tier_ev_contribution_snapshots (
     tier_contribution_to_ev_cents BIGINT,
     snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     FOREIGN KEY (series_id) REFERENCES pack_series_metadata(series_id) ON DELETE CASCADE,
-    UNIQUE (ev_roi_snapshot_id, tier_api_id) -- Ensure tier_api_id is appropriate for uniqueness here
+    UNIQUE (ev_roi_snapshot_id, tier_api_id)
 );
 
 CREATE TABLE IF NOT EXISTS suspected_swapped_cards (
